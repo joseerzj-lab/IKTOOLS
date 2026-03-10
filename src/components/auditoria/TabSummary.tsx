@@ -1,30 +1,69 @@
 import { useMemo, useState } from 'react'
-import * as XLSX from 'xlsx'
-import { SummaryRow } from '../../types/auditoria'
+import type { SummaryRow } from '../../types/auditoria'
+import {
+  PageShell, ScrollArea, Toolbar, SearchInput, FilterPills,
+  Badge, Btn, Divider, EmptyState,
+  C, T
+} from '../../ui/DS'
 
 interface Props {
   rows: SummaryRow[]
   onResolve: (iso: string, aKey: string | null, tipo: string, resolve: boolean) => void
-  onFlag: (iso: string, aKey: string | null, tipo: string, flag: boolean) => void
+  onFlag:    (iso: string, aKey: string | null, tipo: string, flag: boolean) => void
   resolvedConflicts: Set<string>
-  flaggedConflicts: Set<string>
-  resolvedRisk: Set<string>
-  flaggedRisk: Set<string>
+  flaggedConflicts:  Set<string>
+  resolvedRisk:      Set<string>
+  flaggedRisk:       Set<string>
 }
+
+const STATUS_ORDER: Record<string, number> = { pendiente: 0, alerta: 1, resuelto: 2, aprobado: 2 }
 
 function escHtml(s: string) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-const STATUS_ORDER: Record<string, number> = { pendiente: 0, alerta: 1, resuelto: 2, aprobado: 2 }
+function exportXLSX(rows: SummaryRow[]) {
+  if (!rows.length) return
+  const W = (window as any).XLSX
+  if (!W) { alert('XLSX no disponible'); return }
+  const wb = W.utils.book_new()
+  const wsData = [['ISO', 'Vehículo', 'Dirección', 'Observación', 'Detalle', 'Estado']]
+  for (const r of rows) {
+    wsData.push([r.iso, r.veh, r.dir || '', r.obs || '', r.detalle || '',
+      r.status === 'resuelto' ? 'Resuelto' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'])
+  }
+  const ws = W.utils.aoa_to_sheet(wsData)
+  ws['!cols'] = [{wch:14},{wch:20},{wch:45},{wch:20},{wch:55},{wch:14}]
+  W.utils.book_append_sheet(wb, ws, 'Alertas')
+  W.writeFile(wb, 'resumen_alertas.xlsx')
+}
 
-export default function TabSummary({
-  rows, onResolve, onFlag,
-  resolvedConflicts, flaggedConflicts, resolvedRisk, flaggedRisk,
-}: Props) {
-  const [search, setSearch] = useState('')
-  const [sortCol, setSortCol] = useState<string | null>(null)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+function copyToClipboard(rows: SummaryRow[]) {
+  if (!rows.length) return
+  const hS = 'border:1px solid #000;padding:6px 10px;font-weight:bold;background:#0051BA;color:#FFDA1A;font-family:Arial,sans-serif;font-size:11px;'
+  const tS = 'border:1px solid #000;padding:5px 10px;background:#fff;color:#000;font-family:Arial,sans-serif;font-size:11px;'
+  let rich = `<table style="border-collapse:collapse"><tr><th style="${hS}">ISO</th><th style="${hS}">Vehículo</th><th style="${hS}">Dirección</th><th style="${hS}">Observación</th><th style="${hS}">Detalle</th><th style="${hS}">Estado</th></tr>`
+  let plain = 'ISO\tVehículo\tDirección\tObservación\tDetalle\tEstado\n'
+  for (const r of rows) {
+    const estado = r.status === 'resuelto' ? 'Resuelto' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'
+    rich += `<tr><td style="${tS}font-weight:700">${escHtml(r.iso)}</td><td style="${tS}">${escHtml(r.veh)}</td><td style="${tS}">${escHtml(r.dir||'')}</td><td style="${tS}">${escHtml(r.obs||'')}</td><td style="${tS}">${escHtml(r.detalle||'')}</td><td style="${tS}">${estado}</td></tr>`
+    plain += `${r.iso}\t${r.veh}\t${r.dir||''}\t${r.obs||''}\t${r.detalle||''}\t${estado}\n`
+  }
+  rich += '</table>'
+  try {
+    navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([rich], { type:'text/html' }), 'text/plain': new Blob([plain], { type:'text/plain' }) })])
+  } catch { navigator.clipboard.writeText(plain) }
+}
+
+type StatusFilter = 'all' | 'pendiente' | 'alerta' | 'resuelto'
+type TypeFilter   = 'all' | 'geo' | 'fuera' | 'ambos'
+
+export default function TabSummary({ rows }: Props) {
+  const [search, setSearch]           = useState('')
+  const [typeFilter, setTypeFilter]   = useState<TypeFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [sortCol, setSortCol]         = useState<string | null>(null)
+  const [sortDir, setSortDir]         = useState<'asc'|'desc'>('asc')
 
   function toggleSort(col: string) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -32,13 +71,18 @@ export default function TabSummary({
   }
 
   const visible = useMemo(() => {
-    let r = search
-      ? rows.filter(row =>
-          row.iso.toLowerCase().includes(search.toLowerCase()) ||
-          row.veh.toLowerCase().includes(search.toLowerCase())
-        )
-      : rows
-
+    let r = rows.filter(row => {
+      if (typeFilter !== 'all' && row.tipo !== typeFilter) return false
+      if (statusFilter !== 'all') {
+        const s = row.status === 'aprobado' ? 'resuelto' : row.status
+        if (s !== statusFilter) return false
+      }
+      if (search) {
+        const lo = search.toLowerCase()
+        return row.iso.toLowerCase().includes(lo) || row.veh.toLowerCase().includes(lo) || (row.dir||'').toLowerCase().includes(lo)
+      }
+      return true
+    })
     if (sortCol) {
       r = [...r].sort((a, b) => {
         const va = String((a as any)[sortCol] ?? '').toLowerCase()
@@ -46,183 +90,145 @@ export default function TabSummary({
         return sortDir === 'asc' ? va.localeCompare(vb, 'es') : vb.localeCompare(va, 'es')
       })
     } else {
-      r = [...r].sort((a, b) => (STATUS_ORDER[a.status] || 0) - (STATUS_ORDER[b.status] || 0))
+      r = [...r].sort((a, b) => (STATUS_ORDER[a.status]||0) - (STATUS_ORDER[b.status]||0))
     }
-
     return r
-  }, [rows, search, sortCol, sortDir])
+  }, [rows, search, sortCol, sortDir, typeFilter, statusFilter])
 
-  const pending = rows.filter(r => r.status === 'pendiente').length
+  const nGeo   = rows.filter(r => r.tipo === 'geo').length
+  const nFuera = rows.filter(r => r.tipo === 'fuera').length
+  const nAmbos = rows.filter(r => r.tipo === 'ambos').length
+  const nPend  = rows.filter(r => r.status === 'pendiente').length
 
-  function exportXLSX() {
-    if (!visible.length) return
-    const wb = XLSX.utils.book_new()
-    const wsData = [['ISO', 'Vehículo', 'Dirección', 'Observación', 'Detalle', 'Estado']]
-    for (const r of visible) {
-      wsData.push([r.iso, r.veh, r.dir || '', r.obs || '', r.detalle || '',
-        r.status === 'resuelto' ? 'Resuelto' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'])
-    }
-    const ws = XLSX.utils.aoa_to_sheet(wsData)
-    ws['!cols'] = [{wch:14},{wch:20},{wch:45},{wch:20},{wch:55},{wch:14}]
-    XLSX.utils.book_append_sheet(wb, ws, 'Alertas')
-    XLSX.writeFile(wb, 'resumen_alertas.xlsx')
+  if (!rows.length) return <EmptyState icon="📊" message="Carga un plan y ejecuta los análisis para ver el resumen aquí." />
+
+  const th: React.CSSProperties = {
+    padding: '7px 12px', textAlign: 'left', color: C.textFaint,
+    fontWeight: 600, fontSize: T.base, cursor: 'pointer', whiteSpace: 'nowrap',
+    borderBottom: `1px solid ${C.border}`,
   }
-
-  function copyToClipboard() {
-    const hdS = 'border:1px solid #000;padding:6px 10px;font-weight:bold;background:#0051BA;color:#FFDA1A;font-family:Arial,sans-serif;font-size:11px;'
-    const tdS = 'border:1px solid #000;padding:5px 10px;background:#fff;color:#000;font-family:Arial,sans-serif;font-size:11px;'
-    let rich = `<table style="border-collapse:collapse"><tr><th style="${hdS}">ISO</th><th style="${hdS}">Vehículo</th><th style="${hdS}">Dirección</th><th style="${hdS}">Observación</th><th style="${hdS}">Detalle</th><th style="${hdS}">Estado</th></tr>`
-    let plain = 'ISO\tVehículo\tDirección\tObservación\tDetalle\tEstado\n'
-    for (const r of visible) {
-      const estado = r.status === 'resuelto' ? 'Resuelto' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'
-      rich += `<tr><td style="${tdS}font-weight:700">${escHtml(r.iso)}</td><td style="${tdS}">${escHtml(r.veh)}</td><td style="${tdS}">${escHtml(r.dir||'')}</td><td style="${tdS}">${escHtml(r.obs||'')}</td><td style="${tdS}">${escHtml(r.detalle||'')}</td><td style="${tdS}">${estado}</td></tr>`
-      plain += `${r.iso}\t${r.veh}\t${r.dir||''}\t${r.obs||''}\t${r.detalle||''}\t${estado}\n`
-    }
-    rich += '</table>'
-    try {
-      const item = new ClipboardItem({
-        'text/html': new Blob([rich], { type: 'text/html' }),
-        'text/plain': new Blob([plain], { type: 'text/plain' }),
-      })
-      navigator.clipboard.write([item])
-    } catch {
-      navigator.clipboard.writeText(plain)
-    }
-  }
-
-  if (!rows.length) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-500">
-        <div className="text-4xl">📊</div>
-        <div className="text-sm">Ejecuta el análisis de anomalías y/o análisis geo para ver el resumen aquí.</div>
-      </div>
-    )
+  const td: React.CSSProperties = {
+    padding: '6px 12px', fontSize: T.base,
+    borderBottom: `1px solid ${C.borderSoft}`,
   }
 
   const COLS = [
-    { key: 'iso', label: 'ISO', w: 'w-28' },
-    { key: 'veh', label: 'Vehículo', w: 'w-36' },
-    { key: 'dir', label: 'Dirección', w: '' },
-    { key: 'obs', label: 'Observación', w: 'w-36' },
-    { key: 'detalle', label: 'Detalle', w: 'w-48' },
-    { key: 'status', label: 'Estado', w: 'w-24' },
+    { key: 'iso',     label: 'ISO' },
+    { key: 'veh',     label: 'Vehículo' },
+    { key: 'dir',     label: 'Dirección' },
+    { key: 'obs',     label: 'Observación' },
+    { key: 'detalle', label: 'Detalle' },
+    { key: 'status',  label: 'Estado' },
   ]
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2 flex-shrink-0 border-b border-white/5">
-        <span className="text-xs text-gray-400">{rows.length} alertas · <span className="text-orange-300">{pending} pendientes</span></span>
-        <div className="flex-1" />
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar ISO o vehículo…"
-          className="bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-gray-200
-                     placeholder-gray-600 focus:outline-none focus:border-blue-500/50 w-44"
-        />
-        <button
-          onClick={copyToClipboard}
-          className="text-xs px-3 py-1.5 rounded bg-blue-500/15 text-blue-300
-                     border border-blue-500/25 hover:bg-blue-500/25 transition-colors"
-        >📋 Copiar</button>
-        <button
-          onClick={exportXLSX}
-          className="text-xs px-3 py-1.5 rounded bg-green-500/10 text-green-400
-                     border border-green-500/20 hover:bg-green-500/20 transition-colors"
-        >⬇ Excel</button>
-      </div>
+    <PageShell>
+      <Toolbar
+        left={
+          <>
+            <span style={{ fontSize: T.base, color: C.textMuted }}>
+              {rows.length} alertas · <span style={{ color: C.orange, fontWeight: 700 }}>{nPend} pendientes</span>
+            </span>
+            <Divider vertical />
+            <FilterPills<TypeFilter>
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={[
+                { key: 'all',   label: `Todos (${rows.length})` },
+                { key: 'geo',   label: `CI (${nGeo})` },
+                { key: 'fuera', label: `FR (${nFuera})` },
+                { key: 'ambos', label: `FR+CI (${nAmbos})` },
+              ]}
+            />
+            <Divider vertical />
+            <FilterPills<StatusFilter>
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { key: 'all',       label: 'Todos' },
+                { key: 'pendiente', label: '⏳ Pendiente' },
+                { key: 'alerta',    label: '⚠ Alerta' },
+                { key: 'resuelto',  label: '✓ Resuelto' },
+              ]}
+            />
+          </>
+        }
+        right={
+          <>
+            <SearchInput value={search} onChange={setSearch} placeholder="Buscar ISO, veh, dir…" width={160} />
+            <Btn variant="blue" size="sm" onClick={() => copyToClipboard(visible)}>📋 Copiar</Btn>
+            <Btn variant="success" size="sm" onClick={() => exportXLSX(visible)}>⬇ Excel</Btn>
+          </>
+        }
+      />
 
-      {/* Table */}
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-xs min-w-[700px]">
-          <thead className="sticky top-0 z-10" style={{ background: 'rgba(22,27,34,0.95)' }}>
-            <tr className="border-b border-white/10">
-              <th className="text-left px-3 py-2 text-gray-500 font-medium w-8">#</th>
+      <ScrollArea style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: T.base, minWidth: 700 }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--ar-bg-card)' }}>
+            <tr>
+              <th style={{ ...th, width: 32, textAlign: 'center', cursor: 'default' }}>#</th>
               {COLS.map(col => (
-                <th
-                  key={col.key}
-                  onClick={() => toggleSort(col.key)}
-                  className={`text-left px-3 py-2 text-gray-500 font-medium cursor-pointer hover:text-gray-300 transition-colors ${col.w}`}
-                >
+                <th key={col.key} style={th} onClick={() => toggleSort(col.key)}>
                   {col.label}
-                  {sortCol === col.key && <span className="ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+                  {sortCol === col.key && <span style={{ marginLeft: 4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>}
                 </th>
               ))}
-              <th className="px-3 py-2 w-20 text-gray-500 font-medium">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {visible.map((r, i) => {
-              const isResolved = r.status === 'resuelto' || r.status === 'aprobado'
-              const tipoLabel = r.tipo === 'fuera'
-                ? <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-300 border border-orange-500/25">Fuera de Ruta</span>
-                : r.tipo === 'ambos'
-                  ? <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/25">FR + CI</span>
-                  : <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/25">C. Incorrecta</span>
+              const isRes = r.status === 'resuelto' || r.status === 'aprobado'
+              const isFlg = r.status === 'alerta'
 
-              const statusEl = r.status === 'resuelto' || r.status === 'aprobado'
-                ? <span className="text-green-400 font-bold">✓ {r.status === 'aprobado' ? 'Aprobado' : 'Resuelto'}</span>
-                : r.status === 'alerta'
-                  ? <span className="text-red-400 font-bold">⚠ Alerta</span>
-                  : <span className="text-orange-300 font-bold">⏳ Pendiente</span>
+              const tipoEl = r.tipo === 'fuera'
+                ? <Badge variant="medium">Fuera de Ruta</Badge>
+                : r.tipo === 'ambos'
+                  ? <Badge variant="high">FR + CI</Badge>
+                  : <Badge variant="blue">C. Incorrecta</Badge>
+
+              const statusEl = isRes
+                ? <span style={{ color: C.green, fontWeight: 700, fontSize: T.base }}>✓ {r.status === 'aprobado' ? 'Aprobado' : 'Resuelto'}</span>
+                : isFlg
+                  ? <span style={{ color: C.red, fontWeight: 700, fontSize: T.base }}>⚠ Alerta</span>
+                  : <span style={{ color: C.orange, fontWeight: 700, fontSize: T.base }}>⏳ Pendiente</span>
 
               return (
-                <tr
-                  key={r.iso + i}
-                  className={`border-b border-white/3 hover:bg-white/2 transition-colors ${isResolved ? 'opacity-40' : ''}`}
-                >
-                  <td className="px-3 py-2 text-gray-600 text-center">{i + 1}</td>
-                  <td className="px-3 py-2 font-bold text-gray-100">
-                    <button
-                      onClick={() => navigator.clipboard.writeText(r.iso)}
-                      className="hover:text-blue-300 transition-colors"
+                <tr key={r.iso + i}
+                  style={{
+                    opacity: isRes ? 0.4 : 1,
+                    background: i % 2 === 0 ? 'transparent' : 'var(--ar-bg-hover)',
+                  }}>
+                  <td style={{ ...td, textAlign: 'center', color: C.textFaint, fontSize: T.sm }}>{i + 1}</td>
+
+                  {/* ISO — clickable to copy */}
+                  <td style={{ ...td, fontWeight: 700 }}>
+                    <button onClick={() => navigator.clipboard.writeText(r.iso).catch(() => {})}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.blue, fontWeight: 700, fontSize: T.base, fontFamily: T.fontMono, padding: 0 }}
                       title="Copiar ISO"
                     >{r.iso}</button>
                   </td>
-                  <td className="px-3 py-2 text-gray-400 max-w-[140px] truncate" title={r.veh}>{r.veh}</td>
-                  <td className="px-3 py-2 text-gray-400 max-w-[200px] truncate" title={r.dir}>{r.dir || '—'}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5">
-                      {tipoLabel}
-                      <span className="text-gray-500">{r.obs}</span>
+
+                  <td style={{ ...td, color: C.textMuted, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.veh}>{r.veh}</td>
+                  <td style={{ ...td, color: C.textFaint, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.dir}>{r.dir || '—'}</td>
+
+                  <td style={td}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {tipoEl}
+                      <span style={{ color: C.textMuted, fontSize: T.sm }}>{r.obs}</span>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-gray-500 max-w-[190px] truncate" title={r.detalle}>{r.detalle || '—'}</td>
-                  <td className="px-3 py-2 text-[10px]">{statusEl}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => onResolve(r.iso, r.aKey, r.tipo, !isResolved)}
-                        className="text-[9px] px-1.5 py-1 rounded bg-green-500/10 text-green-400
-                                   border border-green-500/20 hover:bg-green-500/20 transition-colors"
-                        title={isResolved ? 'Reabrir' : 'Resolver'}
-                      >{isResolved ? '↩' : '✓'}</button>
-                      <button
-                        onClick={() => onFlag(r.iso, r.aKey, r.tipo, r.status !== 'alerta')}
-                        className="text-[9px] px-1.5 py-1 rounded transition-colors"
-                        style={{
-                          background: r.status === 'alerta' ? 'rgba(248,81,73,.25)' : 'rgba(248,81,73,.08)',
-                          color: '#ff7b72',
-                          border: `1px solid ${r.status === 'alerta' ? 'rgba(248,81,73,.55)' : 'rgba(248,81,73,.22)'}`,
-                        }}
-                      >{r.status === 'alerta' ? '✕' : '⚠'}</button>
-                      <button
-                        onClick={() => navigator.clipboard.writeText(r.iso + (r.dir ? '\t' + r.dir : ''))}
-                        className="text-[9px] px-1.5 py-1 rounded bg-white/5 text-gray-400
-                                   border border-white/10 hover:bg-white/10 transition-colors"
-                      >📋</button>
-                    </div>
-                  </td>
+
+                  <td style={{ ...td, color: C.textFaint, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.detalle}>{r.detalle || '—'}</td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{statusEl}</td>
                 </tr>
               )
             })}
           </tbody>
         </table>
         {visible.length === 0 && (
-          <div className="text-center text-gray-500 py-10 text-sm">Sin resultados para "{search}"</div>
+          <div style={{ textAlign: 'center', color: C.textFaint, padding: '40px 0', fontSize: T.md }}>Sin resultados</div>
         )}
-      </div>
-    </div>
+      </ScrollArea>
+    </PageShell>
   )
 }
