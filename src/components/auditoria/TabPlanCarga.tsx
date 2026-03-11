@@ -92,14 +92,18 @@ export default function TabPlanCarga({ routeData, parsing, onFile, onClear }: Pr
   const hasGeo  = routeData.filter(r => r.lat !== null).length
 
   return (
-    <div style={{
-      height: '100%', overflowY: 'auto',
-      background: TC.bg, color: TC.text,
-      padding: '28px 36px',
-      display: 'flex', flexDirection: 'column', gap: 20,
-      boxSizing: 'border-box',
-      transition: 'background 0.25s, color 0.25s',
-    }}>
+    <div 
+      className="custom-scrollbar"
+      style={{
+        height: '100%', overflowY: 'scroll',
+        background: TC.bg, color: TC.text,
+        padding: '28px 36px',
+        display: 'flex', flexDirection: 'column', gap: 20,
+        boxSizing: 'border-box',
+        transition: 'background 0.25s, color 0.25s',
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'rgba(255,255,255,0.18) transparent',
+      }}>
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
