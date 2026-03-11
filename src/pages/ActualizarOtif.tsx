@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import * as XLSX from 'xlsx'
-import { Upload, Clipboard, BarChart3, Search } from 'lucide-react'
+import { Upload, Clipboard, BarChart3 } from 'lucide-react'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
 import { PageShell, Card, Btn } from '../ui/DS'
 import GlassHeader, { GlassHeaderTab } from '../components/ui/GlassHeader'
@@ -17,7 +17,6 @@ export default function ActualizarOtif() {
   const TC = getThemeColors(theme)
 
   const [activeTab, setActiveTab] = useState<'carga' | 'resultados'>('carga')
-  const [data, setData] = useState<any[] | null>(null)
   const [fileName, setFileName] = useState('')
   const [pivot, setPivot] = useState<PivotData>({})
   const [estados] = useState<string[]>([
@@ -27,7 +26,6 @@ export default function ActualizarOtif() {
     'Planificado en Simpliroute', 
     'Terminado'
   ])
-  const [filterQ, setFilterQ] = useState('')
   const [toast, setToast] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -85,7 +83,6 @@ export default function ActualizarOtif() {
         })
 
         setPivot(pivotObj)
-        setData(filtered)
         flash(`✓ ${filtered.length} filas procesadas correctamente`)
         setActiveTab('resultados')
       } catch (err) {
@@ -99,27 +96,55 @@ export default function ActualizarOtif() {
     e.target.value = ''
   }
 
-  const copyTable = () => {
-    const table = document.getElementById('otif-result-table')
-    if (!table) return
+  const sortedParentOrders = Object.keys(pivot).sort()
 
+  const copyTable = () => {
+    const tempTable = document.createElement('table')
+    tempTable.style.borderCollapse = 'collapse'
+    tempTable.style.fontFamily = 'Aptos, sans-serif'
+    
+    const thead = document.createElement('thead')
+    const trHead = document.createElement('tr')
+    
+    const thStyle = "border: 1px solid black; font-weight: bold; font-family: Aptos, sans-serif; font-size: 12pt; padding: 4px; text-align: center; color: black; background-color: transparent;"
+    const tdStyle = "border: 1px solid black; font-family: Aptos, sans-serif; font-size: 11pt; padding: 4px; text-align: center; color: black; background-color: transparent;"
+    const tdStyleLeft = "border: 1px solid black; font-family: Aptos, sans-serif; font-size: 11pt; padding: 4px; text-align: left; color: black; background-color: transparent;"
+    
+    trHead.innerHTML = `<th style="${thStyle}">ParentOrder</th>` + estados.map(est => `<th style="${thStyle}">${est}</th>`).join('')
+    thead.appendChild(trHead)
+    tempTable.appendChild(thead)
+    
+    const tbody = document.createElement('tbody')
+    sortedParentOrders.forEach(po => {
+      const tr = document.createElement('tr')
+      tr.innerHTML = `<td style="${tdStyleLeft}">${po}</td>` + estados.map(est => {
+        const count = pivot[po][est] || 0
+        return `<td style="${tdStyle}">${count || 0}</td>`
+      }).join('')
+      tbody.appendChild(tr)
+    })
+    tempTable.appendChild(tbody)
+    
+    const container = document.createElement('div')
+    container.style.position = 'absolute'
+    container.style.left = '-9999px'
+    container.appendChild(tempTable)
+    document.body.appendChild(container)
+    
     const range = document.createRange()
-    range.selectNode(table)
+    range.selectNode(tempTable)
     window.getSelection()?.removeAllRanges()
     window.getSelection()?.addRange(range)
     
     try {
       document.execCommand('copy')
-      flash('📋 Tabla copiada al portapapeles')
+      flash('📋 Tabla copiada correctamente')
     } catch (err) {
       flash('❌ Error al copiar')
     }
     window.getSelection()?.removeAllRanges()
+    document.body.removeChild(container)
   }
-
-  const sortedParentOrders = Object.keys(pivot).sort().filter(po => 
-    !filterQ || po.toLowerCase().includes(filterQ.toLowerCase())
-  )
 
   return (
     <PageShell>
@@ -130,9 +155,7 @@ export default function ActualizarOtif() {
         tabs={OTIF_TABS}
         activeTab={activeTab}
         onTabChange={(id) => setActiveTab(id as any)}
-        badges={{
-          resultados: (Object.keys(pivot).length || 0) as any
-        }}
+        badges={{}}
       />
 
       <div className="flex-1 overflow-hidden relative" style={{ background: TC.bg }}>
@@ -156,82 +179,29 @@ export default function ActualizarOtif() {
                   </div>
                   <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={loading} />
                 </label>
-
-                {data && (
-                  <div className="mt-6">
-                    <Btn variant="primary" onClick={() => setActiveTab('resultados')}>Ver Resultados</Btn>
-                  </div>
-                )}
               </Card>
             </div>
           )}
 
           {activeTab === 'resultados' && (
-            <div className="h-full flex flex-col gap-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="relative flex-1 max-w-md">
-                   <Search size={14} color={TC.textFaint} className="absolute left-3 top-1/2 -translate-y-1/2" />
-                   <input 
-                     type="text" 
-                     className="w-full pl-9 pr-4 py-2 rounded-xl text-xs transition-all focus:ring-2 focus:ring-blue-500/20" 
-                     style={{ background: TC.bgCard, color: TC.text, border: `1px solid ${TC.borderSoft}` }} 
-                     placeholder="Buscar ParentOrder..." 
-                     value={filterQ} 
-                     onChange={e => setFilterQ(e.target.value)}
-                   />
+            <div className="h-full flex items-center justify-center">
+              <Card style={{ padding: 60, textAlign: 'center', maxWidth: 400, width: '100%' }}>
+                <div className="w-16 h-16 rounded-3xl bg-green-500/10 text-green-500 flex items-center justify-center mx-auto mb-6">
+                  <Clipboard size={32} />
                 </div>
-                <Btn onClick={copyTable} disabled={!sortedParentOrders.length}>
-                   <Clipboard size={14} /> <span className="text-[10px]">Copiar Tabla</span>
+                <h2 className="text-xl font-bold mb-2" style={{ color: TC.text }}>¡Datos Procesados!</h2>
+                <p className="text-sm mb-8" style={{ color: TC.textMuted }}>
+                  Se han calculado las métricas OTIF para {sortedParentOrders.length} ParentOrders.
+                </p>
+                
+                <Btn onClick={copyTable} disabled={!sortedParentOrders.length} style={{ width: '100%', fontSize: '0.875rem', padding: '1rem 0' }}>
+                  <Clipboard size={18} style={{ marginRight: '0.5rem' }} /> Copiar Tabla Completa
                 </Btn>
-              </div>
-
-              <Card style={{ padding: 0, overflow: 'hidden', flex: 1, border: `1px solid ${TC.borderSoft}` }}>
-                <div className="overflow-auto h-full custom-scrollbar">
-                  <table id="otif-result-table" className="w-full text-xs font-mono" style={{ borderCollapse: 'collapse', minWidth: '600px' }}>
-                    <thead>
-                      <tr className="sticky top-0 z-10 shadow-sm">
-                        <th className="text-left p-4 text-[10px] font-bold uppercase tracking-wider" 
-                            style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}`, borderRight: `1px solid ${TC.borderSoft}` }}>
-                          ParentOrder
-                        </th>
-                        {estados.map(est => (
-                          <th key={est} className="text-center p-4 text-[10px] font-bold uppercase tracking-wider" 
-                              style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}`, borderRight: `1px solid ${TC.borderSoft}` }}>
-                            {est}
-                          </th>
-                        ))}
-                        <th className="text-center p-4 text-[10px] font-bold uppercase tracking-wider" 
-                            style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }}>
-                          Total General
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedParentOrders.map((po) => {
-                        let rowTotal = 0;
-                        return (
-                          <tr key={po} className="hover:bg-blue-500/5 transition-colors border-b" style={{ borderColor: TC.borderSoft }}>
-                            <td className="p-4 font-bold" style={{ color: TC.text, borderRight: `1px solid ${TC.borderSoft}` }}>{po}</td>
-                            {estados.map(est => {
-                              const count = pivot[po][est] || 0;
-                              rowTotal += count;
-                              return (
-                                <td key={est} className="p-4 text-center" style={{ color: TC.textSub, borderRight: `1px solid ${TC.borderSoft}` }}>
-                                  {count || <span className="opacity-20">0</span>}
-                                </td>
-                              );
-                            })}
-                            <td className="p-4 text-center font-bold" style={{ color: TC.text }}>{rowTotal}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
               </Card>
             </div>
           )}
         </div>
+
       </div>
 
       {toast && (

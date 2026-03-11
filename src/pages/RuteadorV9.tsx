@@ -21,8 +21,9 @@ export default function RuteadorV9() {
   const [columns, setColumns] = useState<string[]>(() => {
     try {
         const saved = localStorage.getItem('r9-cols')
-        return saved ? JSON.parse(saved) : ['ISO', 'Commerce', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES']
-    } catch { return ['ISO', 'Commerce', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES'] }
+        const parsed = saved ? JSON.parse(saved) : ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES']
+        return parsed.filter((c: string) => c !== 'Commerce')
+    } catch { return ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES'] }
   })
   const [rows, setRows] = useState<Row[]>(() => {
     try {
@@ -33,8 +34,10 @@ export default function RuteadorV9() {
   const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
     try {
         const saved = localStorage.getItem('r9-vis')
-        return saved ? new Set(JSON.parse(saved)) : new Set(['ISO', 'Commerce', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES'])
-    } catch { return new Set(['ISO', 'Commerce', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES']) }
+        const parsed = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>(['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES'])
+        parsed.delete('Commerce')
+        return parsed
+    } catch { return new Set<string>(['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES']) }
   })
   const [toast, setToast] = useState('')
   
@@ -98,7 +101,7 @@ export default function RuteadorV9() {
   }
 
   const crearNueva = () => {
-    const defaultCols = ['ISO', 'Commerce', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES']
+    const defaultCols = ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES']
     setColumns(defaultCols)
     setVisibleCols(new Set(defaultCols))
     
@@ -154,6 +157,64 @@ export default function RuteadorV9() {
     } catch (err) { flash('⚠️ Error al leer el plan') }
   }
 
+  const handleConversionUpload = async (file: File) => {
+    try {
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames.find(n => n.trim().toLowerCase() === 'plan') || workbook.SheetNames[0]
+        const xlRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' }) as any[]
+        
+        if (!xlRows.length) return flash('⚠️ Archivo de conversión vacío')
+        
+        const headers = Object.keys(xlRows[0] || {})
+        const norm2 = (s: string) => s.trim().toLowerCase().replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u')
+        const colIni = headers.find(h => norm2(h).includes('veh') && norm2(h).includes('inic'))
+        const colFin = headers.find(h => norm2(h).includes('veh') && norm2(h).includes('fin'))
+        
+        if (!colIni || !colFin) return flash('⚠️ No se detectaron columnas Vehículo Inicial/Vehículo Final')
+        
+        let mapCount = 0
+        const vehMap = new Map<string,string>()
+        xlRows.forEach(r => { 
+          const ini = String(r[colIni] || '').trim()
+          if (ini) {
+             vehMap.set(ini.toLowerCase(), String(r[colFin] || '').trim() || ini) 
+             mapCount++
+          }
+        })
+        
+        let updated = 0
+        setRows(prev => {
+           const vehCol = columns.find(c => norm2(c).includes('veh'))
+           if (!vehCol) {
+             flash('⚠️ La tabla no tiene una columna de vehículo a convertir')
+             return prev
+           }
+           return prev.map(r => {
+              const v = String(r[vehCol] || '').trim()
+              if (v && vehMap.has(v.toLowerCase())) {
+                  const newVal = vehMap.get(v.toLowerCase())!
+                  if (newVal !== v) {
+                      updated++
+                      return { ...r, [vehCol]: newVal }
+                  }
+              }
+              return r
+           })
+        })
+        if (updated > 0) {
+            flash(`✓ ${updated} vehículos convertidos (${mapCount} reglas)`)
+            setTab('dashboard')
+        } else {
+            flash(`ℹ️ Ningún vehículo coincidió para conversión (${mapCount} reglas)`)
+        }
+      }
+      reader.readAsArrayBuffer(file)
+    } catch (err) { flash('⚠️ Error al leer conversión') }
+  }
+
   const handleProjectsUpload = async (file: File) => {
     try {
       const reader = new FileReader()
@@ -180,6 +241,111 @@ export default function RuteadorV9() {
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer proyectos') }
+  }
+
+  const handleOriginCross = async (file: File) => {
+    try {
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const xlRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' }) as any[]
+        
+        if (!xlRows.length) return flash('⚠️ Archivo Origin Cross vacío')
+
+        const headers = Object.keys(xlRows[0] || {})
+        const cIso = headers.find(h => h.toUpperCase().includes("ISO"))
+        const cOri = headers.find(h => h.toUpperCase().includes("RTE") || h.toUpperCase().includes("ORIGEN"))
+        
+        if (!cIso || !cOri) return flash('⚠️ Faltan columnas ISO o Origen en el archivo Origin Cross')
+
+        const map = new Map<string, string>()
+        xlRows.forEach(r => {
+          const iso = String(r[cIso] || '').trim().toUpperCase()
+          if (iso) map.set(iso, String(r[cOri] || '').trim().toUpperCase())
+        })
+
+        let upd = 0
+        setRows(prev => prev.map(r => {
+          if (r.ORIGEN === 'PENDIENTE' && r.ISO && map.has(r.ISO)) {
+            upd++
+            return { ...r, ORIGEN: map.get(r.ISO)! }
+          }
+          return r
+        }))
+
+        flash(`✓ ${upd} orígenes cruzados.`)
+        if (upd > 0) setTab('dashboard')
+      }
+      reader.readAsArrayBuffer(file)
+    } catch (err) { flash('⚠️ Error al leer archivo de cruce') }
+  }
+
+  const handleDestinoCross = async (planFile: File, convFile: File) => {
+    try {
+      const readExcel = (file: File) => new Promise<any[]>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = e => {
+          try {
+            const data = new Uint8Array(e.target?.result as ArrayBuffer)
+            const wb = XLSX.read(data, { type: 'array' })
+            const ws = wb.Sheets[wb.SheetNames[0]]
+            resolve(XLSX.utils.sheet_to_json(ws, { defval: '' }))
+          } catch (err) { reject(err) }
+        }
+        reader.onerror = reject
+        reader.readAsArrayBuffer(file)
+      })
+
+      const [rC, rV] = await Promise.all([readExcel(planFile), readExcel(convFile)])
+      if (!rC.length || !rV.length) return flash('⚠️ Uno de los archivos está vacío.')
+
+      const kC = Object.keys(rC[0])
+      const cTit = kC.find(k => k.toUpperCase() === "TITULO" || k.toUpperCase() === "TÍTULO") || kC.find(k => k.toUpperCase().includes("TITULO") || k.toUpperCase().includes("TÍTULO") || k.toUpperCase().includes("ISO"))
+      const cVeh = kC.find(k => k.toUpperCase() === "VEHICULO" || k.toUpperCase() === "VEHÍCULO" || k.toUpperCase() === "VEH") || kC.find(k => k.toUpperCase().includes("VEHICULO") || k.toUpperCase().includes("VEHÍCULO"))
+
+      const kV = Object.keys(rV[0])
+      const cIni = kV.find(k => k.toUpperCase().includes("INICIAL") || k.toUpperCase().includes("INI"))
+      const cFin = kV.find(k => k.toUpperCase().includes("FINAL") || k.toUpperCase().includes("FIN"))
+
+      if (!cTit || !cVeh) return flash(`⚠️ Plan: no se detectó Título/Vehículo. Cols: ${kC.join(', ')}`)
+      if (!cIni || !cFin) return flash(`⚠️ Conversión: no se detectó VEH INICIAL/FINAL. Cols: ${kV.join(', ')}`)
+
+      const mapConv = new Map<string, string>()
+      rV.forEach(r => {
+        const i = String(r[cIni] || '').trim().toUpperCase()
+        if (i) mapConv.set(i, String(r[cFin] || '').trim().toUpperCase() || i)
+      })
+
+      const mapFinal = new Map<string, string>()
+      rC.forEach(r => {
+        const t = String(r[cTit] || '').trim().toUpperCase()
+        const v = String(r[cVeh] || '').trim().toUpperCase()
+        if (t && v) mapFinal.set(t, mapConv.get(v) || v)
+      })
+
+      let upd = 0
+      let nf = 0
+      setRows(prev => {
+        const newRows = [...prev]
+        newRows.forEach(m => {
+          const k = String(m.ISO || '').trim().toUpperCase()
+          if (mapFinal.has(k)) {
+            m.DESTINO = mapFinal.get(k)!
+            upd++
+          } else {
+            nf++
+          }
+        })
+        return newRows
+      })
+
+      flash(`✓ ${upd} vehículos asignados. ${nf ? `(${nf} sin coincidencia)` : ''}`)
+      if (upd > 0) setTab('dashboard')
+    } catch (err) {
+      flash('⚠️ Error procesando el cruce de destino.')
+    }
   }
 
   // ISO mapping for duplicates
@@ -231,6 +397,9 @@ export default function RuteadorV9() {
                 onLoadJSON={onLoadJSON} 
                 onPVPlanUpload={handlePVPlanUpload}
                 onProjectsUpload={handleProjectsUpload}
+                onConversionUpload={handleConversionUpload}
+                onOriginCross={handleOriginCross}
+                onDestinoCross={handleDestinoCross}
                 pvPlanName={pvPlanName}
                 projectsName={projectsName}
                 TC={TC}
@@ -250,6 +419,8 @@ export default function RuteadorV9() {
                 onAddRow={addRow} 
                 onDeleteRow={deleteRow} 
                 onCrearNueva={crearNueva} 
+                onUpdateRows={setRows}
+                onNotify={flash}
               />
             </motion.div>
           )}

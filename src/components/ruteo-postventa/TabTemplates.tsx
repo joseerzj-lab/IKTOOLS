@@ -60,7 +60,7 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
 
     navigator.clipboard.write(data).then(() => {
       document.body.removeChild(container)
-    }).catch(err => {
+    }).catch(_err => {
       // Fallback for older browsers
       const range = document.createRange()
       range.selectNodeContents(container)
