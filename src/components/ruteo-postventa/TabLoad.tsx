@@ -215,7 +215,7 @@ export default function TabLoad({
   }
 
   return (
-    <div className="flex-1 overflow-y-scroll custom-scrollbar p-6 flex flex-col gap-6" style={{ 
+    <div className="flex-1 h-full overflow-y-scroll custom-scrollbar p-6 flex flex-col gap-6" style={{ 
       background: TC.bg,
       scrollbarWidth: 'thin',
       scrollbarColor: 'rgba(255,255,255,0.18) transparent',

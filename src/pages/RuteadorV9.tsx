@@ -451,7 +451,7 @@ export default function RuteadorV9() {
       <div className="flex-1 overflow-hidden relative" style={{ background: TC.bg }}>
         <AnimatePresence mode="wait" initial={false}>
           {tab === 'load' && (
-            <motion.div key="load" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.02 }} className="absolute inset-0">
+            <motion.div key="load" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.02 }} className="absolute inset-0 flex flex-col h-full">
               <TabLoad 
                 rows={rows} 
                 onMergeRows={onMergeRows} 
