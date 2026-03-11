@@ -19,13 +19,7 @@ export default function ActualizarOtif() {
   const [activeTab, setActiveTab] = useState<'carga' | 'resultados'>('carga')
   const [fileName, setFileName] = useState('')
   const [pivot, setPivot] = useState<PivotData>({})
-  const [estados] = useState<string[]>([
-    'En Ruta', 
-    'Pendiente', 
-    'Planificado', 
-    'Planificado en Simpliroute', 
-    'Terminado'
-  ])
+  const [estados, setEstados] = useState<string[]>([])
   const [toast, setToast] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -62,26 +56,33 @@ export default function ActualizarOtif() {
         }
 
         const pivotObj: PivotData = {}
+        const estadosSet = new Set<string>()
 
         filtered.forEach(row => {
           const parentOrder = String(row['ParentOrder'] || '').trim()
-          const estado = String(row['Estado'] || 'Sin Estado').trim()
+          const estado = String(row['Estado'] || '').trim()
           const lpn = String(row['LPN'] || '').trim()
 
-          if (!parentOrder) return
+          if (!parentOrder || !estado) return
+
+          estadosSet.add(estado)
 
           if (!pivotObj[parentOrder]) {
             pivotObj[parentOrder] = {}
-            // Initialize all standard statuses to 0
-            estados.forEach(est => pivotObj[parentOrder][est] = 0)
+          }
+          if (!pivotObj[parentOrder][estado]) {
+            pivotObj[parentOrder][estado] = 0
           }
           
-          // Only increment if it's one of our standard statuses and LPN is present
-          if (lpn !== '' && estados.includes(estado)) {
+          if (lpn !== '') {
             pivotObj[parentOrder][estado]++
           }
         })
 
+        estadosSet.add('Planificado En Simpliroute')
+        const finalEstados = Array.from(estadosSet).sort()
+        
+        setEstados(finalEstados)
         setPivot(pivotObj)
         flash(`✓ ${filtered.length} filas procesadas correctamente`)
         setActiveTab('resultados')
@@ -110,17 +111,22 @@ export default function ActualizarOtif() {
     const tdStyle = "border: 1px solid black; font-family: Aptos, sans-serif; font-size: 11pt; padding: 4px; text-align: center; color: black; background-color: transparent;"
     const tdStyleLeft = "border: 1px solid black; font-family: Aptos, sans-serif; font-size: 11pt; padding: 4px; text-align: left; color: black; background-color: transparent;"
     
-    trHead.innerHTML = `<th style="${thStyle}">ParentOrder</th>` + estados.map(est => `<th style="${thStyle}">${est}</th>`).join('')
+    trHead.innerHTML = `<th style="${thStyle}">ParentOrder</th>` + estados.map(est => `<th style="${thStyle}">${est}</th>`).join('') + `<th style="${thStyle}">Total general</th>`
     thead.appendChild(trHead)
     tempTable.appendChild(thead)
     
     const tbody = document.createElement('tbody')
     sortedParentOrders.forEach(po => {
       const tr = document.createElement('tr')
-      tr.innerHTML = `<td style="${tdStyleLeft}">${po}</td>` + estados.map(est => {
-        const count = pivot[po][est] || 0
-        return `<td style="${tdStyle}">${count || 0}</td>`
+      let totalFila = 0
+      
+      const tds = estados.map(est => {
+        const count = pivot[po]?.[est] || 0
+        totalFila += count
+        return `<td style="${tdStyle}">${count}</td>`
       }).join('')
+      
+      tr.innerHTML = `<td style="${tdStyleLeft}">${po}</td>` + tds + `<td style="${tdStyle}">${totalFila}</td>`
       tbody.appendChild(tr)
     })
     tempTable.appendChild(tbody)

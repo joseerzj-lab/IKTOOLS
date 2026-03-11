@@ -1,12 +1,13 @@
 import React, { useState, useCallback, useMemo, useRef, useDeferredValue, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, X, Copy, Maximize2, Image as ImageIcon, FileDown, FileSpreadsheet } from 'lucide-react'
+import { Search, X, Copy, Maximize2, Image as ImageIcon, FileDown, FileSpreadsheet, AlertTriangle } from 'lucide-react'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
 import { PageShell, Card, Btn, Badge } from '../ui/DS'
 import GlassHeader from '../components/ui/GlassHeader'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from 'recharts'
 import html2canvas from 'html2canvas'
 import { DropdownMenu } from '../components/ui/dropdown-menu'
+import TableModal from '../components/reporte-rutas/TableModal'
 
 const REPORT_TABS = [
   { id: 'carga',   label: 'Cargar Datos', icon: '📁', badgeVariant: 'blue'   },
@@ -23,8 +24,10 @@ function getKey(row:any,key:string){const k=Object.keys(row).find(k=>k.trim().to
 function termGradient(pct:number){const p=Math.max(0,Math.min(100,pct)); if(p>=100)return{bg:'rgba(34,197,94,.25)',txt:'#22c55e'}; if(p>=90)return{bg:'rgba(234,179,8,.2)',txt:'#eab308'}; return{bg:'rgba(239,68,68,.15)',txt:'#ef4444'}}
 
 type PRData = {
-  regions: Record<string,{orders:Set<string>;estados:Record<string,Set<string>>;patentes:Record<string,{orders:Set<string>;estados:Record<string,Set<string>>}>}>
+  regions: Record<string,{orders:Set<string>;estados:Record<string,Set<string>>;patentes:Record<string,{orders:Set<string>;estados:Record<string,Set<string>>;poStates:Record<string,Set<string>>}>}>
   estados: string[]
+  conflictedByPatente: Record<string, { po: string, states: string[], rows: any[] }[]>
+  hasConflicts: boolean
 }
 
 export default function ReporteRutas() {
@@ -41,7 +44,16 @@ export default function ReporteRutas() {
   const [searchQuery, setSearchQuery] = useState('')
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false)
-  const [modalData, setModalData] = useState<any[]|null>(null)
+
+  // -- Modals Data (Conflicts & Patente Detail)
+  const [conflictModalOpen, setConflictModalOpen] = useState(false)
+  const [conflictModalData, setConflictModalData] = useState<any[]>([])
+  const [conflictModalCols, setConflictModalCols] = useState<string[]>([])
+  const [activePatente, setActivePatente] = useState('')
+
+  const [patenteModalOpen, setPatenteModalOpen] = useState(false)
+  const [patenteModalData, setPatenteModalData] = useState<any[]>([])
+  const [patenteModalCols, setPatenteModalCols] = useState<string[]>([])
 
   // -- Modal Cell Selection
   const [selection, setSelection] = useState<{ start: {r: number, c: number} | null, end: {r: number, c: number} | null }>({ start: null, end: null })
@@ -180,10 +192,101 @@ export default function ReporteRutas() {
 
   const handleBarClick = (payloadData: any) => {
     if (!payloadData || !payloadData.patente) return
-    const rows = rawRows.filter(r => (getKey(r, 'Patente') || '').trim() === payloadData.patente)
-    setSearchQuery('')
-    setModalData(rows)
-    setIsSearchModalOpen(true)
+    const pat = payloadData.patente
+    openPatenteModal(pat)
+  }
+
+  const openPatenteModal = (patente: string) => {
+    const rows = rawRows.filter(r => (getKey(r, 'Patente') || '').trim() === patente)
+    const knownCols = new Set(['commerce','patente','region','estado','parentorder'])
+    let extraCols: string[] = []
+    if (rows.length > 0) {
+      extraCols = Object.keys(rows[0]).filter(k => !knownCols.has(k.trim().toLowerCase()))
+    }
+    const cols = ['Estado', 'Patente', 'Region', 'ParentOrder', ...extraCols]
+    const pData = rows.map(r => ({
+      Estado: (getKey(r, 'Estado') || '').trim(),
+      Patente: (getKey(r, 'Patente') || '').trim(),
+      Region: (getKey(r, 'Region') || '').trim(),
+      ParentOrder: (getKey(r, 'ParentOrder') || '').trim(),
+      ...Object.fromEntries(extraCols.map(c => [c, String(r[c] ?? '')]))
+    }))
+
+    setActivePatente(patente)
+    setPatenteModalCols(cols)
+    setPatenteModalData(pData)
+    setPatenteModalOpen(true)
+  }
+
+  const openConflictModal = (patente: string, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    if (!data || !data.conflictedByPatente[patente]) return
+    const conflicts = data.conflictedByPatente[patente]
+    
+    const knownCols = new Set(['commerce','patente','region','estado','parentorder'])
+    let extraCols: string[] = []
+    if (conflicts[0].rows.length > 0) {
+      extraCols = Object.keys(conflicts[0].rows[0]).filter(k => !knownCols.has(k.trim().toLowerCase()))
+    }
+    const cols = ['Estado', 'Patente', 'Region', 'ParentOrder', ...extraCols, '_isConflict']
+    
+    const conflictedPOs = new Set(conflicts.map(c => c.po))
+    const cData: any[] = []
+    
+    conflicts.forEach(({po, rows}) => {
+      rows.forEach(r => {
+        cData.push({
+          Estado: (getKey(r, 'Estado') || '').trim(),
+          Patente: (getKey(r, 'Patente') || '').trim(),
+          Region: (getKey(r, 'Region') || '').trim(),
+          ParentOrder: po,
+          _isConflict: conflictedPOs.has(po),
+          _refRow: r, // Keep ref to original
+          ...Object.fromEntries(extraCols.map(c => [c, String(r[c] ?? '')]))
+        })
+      })
+    })
+
+    setActivePatente(patente)
+    setConflictModalCols(cols)
+    setConflictModalData(cData)
+    setConflictModalOpen(true)
+  }
+
+  const handleDeleteConflictRow = (rowIndex: number) => {
+    // We get the index from the modal data
+    const rowToRemove = conflictModalData[rowIndex]
+    if (!rowToRemove) return
+
+    // 1. Remove from RawRows
+    const newRawRows = rawRows.filter(r => r !== rowToRemove._refRow)
+    
+    // 2. Remove from modal data
+    const newModalData = conflictModalData.filter((_, i) => i !== rowIndex)
+    setConflictModalData(newModalData)
+    
+    // 3. Re-process everything so charts/tables update automatically
+    processCSVData(newRawRows)
+    
+    flash('✓ Fila eliminada')
+    
+    // If no conflicts left for this patent, close modal
+    if (newModalData.length === 0) {
+      setConflictModalOpen(false)
+    }
+  }
+
+  const exportModalDataCSV = (mdata: any[], cols: string[], filename: string) => {
+    const csvCols = cols.filter(c => c !== '_isConflict')
+    const escCSV = (v: any) => { const s = String(v ?? ''); return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s }
+    let csv = csvCols.map(escCSV).join(',') + '\n'
+    mdata.forEach((row: any) => { csv += csvCols.map(c => escCSV(row[c] ?? '')).join(',') + '\n' })
+    const blob = new Blob(["\uFEFF"+csv], {type: 'text/csv;charset=utf-8;'})
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `${filename}.csv`
+    link.click()
   }
 
   const chartData = useMemo(() => {
@@ -228,7 +331,17 @@ export default function ReporteRutas() {
       const headers = parseRow(lines[0], sep)
       const rows = lines.slice(1).map(line => { const vals = parseRow(line, sep); const obj:any={}; headers.forEach((h,i)=>obj[h]=vals[i]||''); return obj })
 
+      setFileName(file.name)
+      processCSVData(rows)
+      flash('✓ Reporte procesado')
+    }
+    reader.readAsText(file, 'UTF-8'); e.target.value=''
+  }
+
+  const processCSVData = (rows: any[]) => {
       const processed:PRData['regions'] = {}; const estadosSet = new Set<string>()
+      const rawRowsByPO: Record<string, any[]> = {}
+      
       setRawRows(rows)
 
       rows.forEach(row => {
@@ -238,23 +351,50 @@ export default function ReporteRutas() {
         const estado=(getKey(row,'Estado')||'Sin Estado').trim()
         const parentOrder=(getKey(row,'ParentOrder')||'').trim()
         if(commerce.toLowerCase()!=='ikea'||!patente) return
+        
         estadosSet.add(estado)
+        if (!rawRowsByPO[parentOrder]) rawRowsByPO[parentOrder] = []
+        rawRowsByPO[parentOrder].push(row)
+
         if(!processed[region]) processed[region]={orders:new Set(),estados:{},patentes:{}}
         processed[region].orders.add(parentOrder)
         if(!processed[region].estados[estado]) processed[region].estados[estado]=new Set()
         processed[region].estados[estado].add(parentOrder)
-        if(!processed[region].patentes[patente]) processed[region].patentes[patente]={orders:new Set(),estados:{}}
-        processed[region].patentes[patente].orders.add(parentOrder)
-        if(!processed[region].patentes[patente].estados[estado]) processed[region].patentes[patente].estados[estado]=new Set()
-        processed[region].patentes[patente].estados[estado].add(parentOrder)
+        
+        const pats = processed[region].patentes
+        if(!pats[patente]) pats[patente]={orders:new Set(),estados:{},poStates:{}}
+        pats[patente].orders.add(parentOrder)
+        if(!pats[patente].estados[estado]) pats[patente].estados[estado]=new Set()
+        pats[patente].estados[estado].add(parentOrder)
+        if(!pats[patente].poStates[parentOrder]) pats[patente].poStates[parentOrder]=new Set()
+        pats[patente].poStates[parentOrder].add(estado)
       })
-      setData({ regions: processed, estados: [...estadosSet].sort() })
-      setFileName(file.name)
+
+      const conflictedByPatente: Record<string, { po: string, states: string[], rows: any[] }[]> = {}
+      let hasConflicts = false
+
+      Object.values(processed).forEach(rData => {
+        Object.entries(rData.patentes).forEach(([patente, pData]) => {
+          const conf = Object.entries(pData.poStates)
+            .filter(([, s]) => s.size > 1)
+            .map(([po, s]) => ({ po, states: Array.from(s), rows: rawRowsByPO[po] || [] }))
+          
+          if (conf.length) {
+            if (!conflictedByPatente[patente]) conflictedByPatente[patente] = []
+            conflictedByPatente[patente].push(...conf)
+            hasConflicts = true
+          }
+        })
+      })
+
+      setData({ 
+        regions: processed, 
+        estados: [...estadosSet].sort(),
+        conflictedByPatente,
+        hasConflicts
+      })
       setActiveTab('reporte')
       setChartRegion(Object.keys(processed).sort()[0] || '')
-      flash('✓ Reporte procesado')
-    }
-    reader.readAsText(file, 'UTF-8'); e.target.value=''
   }
 
   const toggleRegion = (r:string) => setExpanded(p=>{const n=new Set(p); n.has(r)?n.delete(r):n.add(r); return n})
@@ -331,13 +471,13 @@ export default function ReporteRutas() {
     return results
   }, [deferredSearchQuery, rawRows])
 
-  const displayedModalData = modalData || searchResults
+  const displayedModalData = searchResults
 
   const copySearchData = () => {
     if (displayedModalData.length === 0) return
     const keys = Object.keys(displayedModalData[0])
     let text = keys.join('\t') + '\n'
-    displayedModalData.forEach(row => {
+    displayedModalData.forEach((row: any) => {
       text += keys.map(k => String(row[k] || '').replace(/\t/g, ' ')).join('\t') + '\n'
     })
     navigator.clipboard?.writeText(text).then(() => flash('✓ Tabla copiada (formato Excel)'))
@@ -449,6 +589,15 @@ export default function ReporteRutas() {
                       </div>
                     </div>
 
+                    {data.hasConflicts && (
+                      <div className="bg-orange-500/10 border border-orange-500/30 rounded-xl p-3 flex items-center gap-3">
+                         <AlertTriangle size={18} className="text-orange-500 shrink-0" />
+                         <div className="text-sm" style={{ color: TC.text }}>
+                           <strong>⚠️ Conflictos detectados:</strong> Hay ParentOrders con múltiples estados simultáneos (ej: Planificado y En Ruta). Esto infla los porcentajes. Las filas con conflictos están marcadas y se puede ver el detalle.
+                         </div>
+                      </div>
+                    )}
+
                     <Card style={{ padding: 0, overflow: 'hidden', border: `1px solid ${TC.borderSoft}`, boxShadow: '0 10px 40px rgba(0,0,0,0.1)' }}>
                       <div className="overflow-x-auto" ref={tableRef} id="table-export-container">
                         <table className="w-full text-[11px] font-mono" style={{ borderCollapse: 'collapse', background: TC.bgCard }}>
@@ -471,11 +620,51 @@ export default function ReporteRutas() {
                                   </tr>
                                   {isExp && Object.keys(rd.patentes).sort().map(pat => {
                                     const pd = rd.patentes[pat]; const pT = pd.orders.size; const termIdx = data.estados.findIndex(e => e.toLowerCase().includes('terminado'))
+                                    
+                                    let sumPct = 0
+                                    data.estados.forEach(e => {
+                                      const v = pd.estados[e] ? pd.estados[e].size : 0
+                                      sumPct += pT > 0 ? (v/pT)*100 : 0
+                                    })
+                                    const isConf = viewMode === 'pct' && sumPct > 100.5
+                                    const hasConfData = data.conflictedByPatente[pat]
+                                    const rowBgClass = isConf ? 'bg-orange-50 dark:bg-orange-900/10' : 'hover:bg-white/[.04]'
+                                    
                                     return (
-                                      <tr key={`${region}-${pat}`} className="hover:bg-white/[.04] transition-colors border-b" style={{ borderColor: TC.borderSoft }}>
-                                        <td className="p-3 pl-14 text-gray-500 italic relative overflow-hidden"><span className="absolute left-10 top-1/2 -translate-y-1/2 w-2 h-2 border-l-2 border-b-2 border-gray-700/50"></span>{pat}</td>
-                                        {data.estados.map((e, ei) => { const v = pd.estados[e] ? pd.estados[e].size : 0; const display = v > 0 ? (viewMode === 'pct' ? `${((v / pT) * 100).toFixed(1)}%` : v) : ''; const isTerm = viewMode === 'pct' && ei === termIdx && pT > 0; const grad = isTerm ? termGradient((v / pT) * 100) : null; return <td key={e} className="p-3 text-right" style={{ color: grad ? grad.txt : TC.text, background: grad ? grad.bg : 'transparent', fontWeight: grad ? 800 : 400 }}>{isTerm && v === 0 ? '0%' : (display || <span className="opacity-10">·</span>)}</td> })}
+                                      <tr key={`${region}-${pat}`} className={`${rowBgClass} transition-colors border-b`} style={{ borderColor: TC.borderSoft }}>
+                                        <td className="p-3 pl-14 text-gray-500 italic relative overflow-hidden flex items-center gap-2">
+                                          <span className="absolute left-10 top-1/2 -translate-y-1/2 w-2 h-2 border-l-2 border-b-2 border-gray-700/50"></span>
+                                          <span className={isConf ? 'text-orange-600 dark:text-orange-400 font-bold' : ''}>{pat}</span>
+                                          {isConf && hasConfData && (
+                                            <button onClick={(e) => openConflictModal(pat, e)} className="text-[9px] bg-orange-100 text-orange-600 border border-orange-300 px-2 py-0.5 rounded-full hover:bg-orange-200 transition-colors ml-1">
+                                              ⚠️ Conflictos ({data.conflictedByPatente[pat].length} PO)
+                                            </button>
+                                          )}
+                                          <button onClick={(e) => { e.stopPropagation(); openPatenteModal(pat) }} className="text-[9px] bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-full hover:bg-blue-100 transition-colors ml-1 flex items-center gap-1">
+                                             <Search size={10} /> Ver filas
+                                          </button>
+                                        </td>
+                                        {data.estados.map((e, ei) => { 
+                                          const v = pd.estados[e] ? pd.estados[e].size : 0; 
+                                          const display = v > 0 ? (viewMode === 'pct' ? `${((v / pT) * 100).toFixed(1)}%` : v) : ''; 
+                                          const isTerm = viewMode === 'pct' && ei === termIdx && pT > 0 && !isConf; 
+                                          const grad = isTerm ? termGradient((v / pT) * 100) : null; 
+                                          return (
+                                            <td key={e} className="p-3 text-right" style={{ color: grad ? grad.txt : (isConf ? '#c2410c' : TC.text), background: grad ? grad.bg : 'transparent', fontWeight: grad ? 800 : 400 }}>
+                                              {isTerm && v === 0 ? '0%' : (display || <span className="opacity-10">·</span>)}
+                                            </td>
+                                          ) 
+                                        })}
                                         <td className="p-3 text-right font-bold opacity-30" style={{ color: TC.text }}>{viewMode === 'pct' ? '100%' : pT}</td>
+                                        {viewMode === 'pct' && (
+                                           <td className="p-3 text-center">
+                                             {isConf ? (
+                                                <span className="bg-yellow-400 text-black px-2 py-1 rounded-full text-[10px] font-bold">⚠️ {sumPct.toFixed(1)}%</span>
+                                             ) : (
+                                                <span className="text-green-500 font-bold text-xs flex justify-center w-full">✓</span>
+                                             )}
+                                           </td>
+                                        )}
                                       </tr>
                                     )
                                   })}
@@ -732,7 +921,7 @@ export default function ReporteRutas() {
                         </tr>
                       </thead>
                       <tbody className="select-none">
-                        {displayedModalData.map((row, idx) => (
+                        {displayedModalData.map((row: any, idx: number) => (
                           <tr key={idx} className="hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors">
                             {Object.keys(row).map((key, cidx) => {
                               let isSelected = false
@@ -775,6 +964,31 @@ export default function ReporteRutas() {
           </>
         )}
       </AnimatePresence>
+
+      <TableModal 
+        isOpen={conflictModalOpen}
+        onClose={() => setConflictModalOpen(false)}
+        title={`Conflictos — Patente: ${activePatente}`}
+        subtitle={`${data?.conflictedByPatente[activePatente]?.length || 0} ParentOrder(s) con múltiples estados simultáneos`}
+        data={conflictModalData}
+        columns={conflictModalCols}
+        isConflictModal={true}
+        onDeleteRow={handleDeleteConflictRow}
+        onExportCSV={() => exportModalDataCSV(conflictModalData, conflictModalCols, `Conflictos_${activePatente}`)}
+        TC={TC}
+      />
+
+      <TableModal 
+        isOpen={patenteModalOpen}
+        onClose={() => setPatenteModalOpen(false)}
+        title={`Detalle Patente`}
+        subtitle={`Viendo detalle de filas para ${activePatente}`}
+        data={patenteModalData}
+        columns={patenteModalCols}
+        onExportCSV={() => exportModalDataCSV(patenteModalData, patenteModalCols, `Detalle_${activePatente}`)}
+        TC={TC}
+      />
+
     </PageShell>
   )
 }

@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import * as XLSX from 'xlsx'
+import { useTableSelection } from '../hooks/useTableSelection'
 import { Upload, Truck, Search, Clipboard } from 'lucide-react'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
 import { C, PageShell, Card, Btn, Badge } from '../ui/DS'
@@ -30,6 +31,9 @@ export default function VerificadorVehiculos() {
   const [filterQ, setFilterQ] = useState('')
   const [toast, setToast] = useState('')
   const [stats, setStats] = useState<{s1:any;s2:any;s3:any}>({s1:null,s2:null,s3:null})
+
+  const tableRef = useRef<HTMLTableElement>(null)
+  useTableSelection(tableRef)
 
   const flash = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(''), 2500) }, [])
 
@@ -281,7 +285,7 @@ export default function VerificadorVehiculos() {
                    </div>
                 ) : (
                   <div className="overflow-auto h-full">
-                    <table className="w-full text-xs font-mono" style={{ borderCollapse: 'collapse' }}>
+                    <table ref={tableRef} className="w-full text-xs font-mono" style={{ borderCollapse: 'collapse' }}>
                       <thead>
                         <tr className="sticky top-0 z-10 shadow-sm">
                           {['Vehículo', 'Destinos', 'Patente detectada', 'Estado Final'].map(h => (

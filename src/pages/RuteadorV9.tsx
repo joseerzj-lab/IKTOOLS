@@ -348,6 +348,68 @@ export default function RuteadorV9() {
     }
   }
 
+  const handleRuteoUpload = async (file: File) => {
+    try {
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const xlRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' }) as any[]
+        
+        if (!xlRows.length) return flash('⚠️ Archivo de Ruteo vacío')
+        if (!rows.length) return flash('⚠️ Dashboard vacío. Carga datos primero.')
+        
+        const isoGestMap = new Map<string, string>()
+        rows.forEach(r => {
+          if (r.ISO) isoGestMap.set(r.ISO.trim().toUpperCase(), r['GESTIÓN'] || '')
+        })
+        
+        const man = new Date()
+        man.setDate(man.getDate() + 1)
+        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+        const fechaStr = `${String(man.getDate()).padStart(2, '0')}-${months[man.getMonth()]}-${String(man.getFullYear()).slice(2)}`
+        
+        const keys = Object.keys(xlRows[0] || {})
+        const colIdRef = keys.find(k => k.replace(/[\s_]/g, '').toUpperCase().includes('IDREFERENCIA') || k.toUpperCase().includes('ID_REFERENCIA'))
+        const colFecha = keys.find(k => k.replace(/[\s_]/g, '').toUpperCase().includes('FECHAPROGRAMADA') || k.toUpperCase().includes('FECHA_PROGRAMADA'))
+        const colIso = keys.find(k => k === "ISO" || k.includes("ISO"))
+        
+        let matched = 0
+        const notFound: string[] = []
+        
+        const output = xlRows.map(r => {
+          const rowCopy = { ...r }
+          const iso = String(colIso ? r[colIso] : Object.values(r)[0] || '').trim().toUpperCase()
+          const gest = isoGestMap.get(iso)
+          
+          if (gest !== undefined) {
+             if (colIdRef) rowCopy[colIdRef] = gest
+             else rowCopy['ID_REFERENCIA'] = gest
+             matched++
+          } else {
+             if (iso) notFound.push(iso)
+          }
+          
+          if (colFecha) rowCopy[colFecha] = fechaStr
+          else rowCopy['FECHA_PROGRAMADA'] = fechaStr
+          
+          return rowCopy
+        })
+        
+        const ws = XLSX.utils.json_to_sheet(output)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, "RUTEO")
+        XLSX.writeFile(wb, "ISOS RUTEO.xlsx")
+        
+        flash(`✅ Exportado ISOS RUTEO.xlsx (Cruzadas: ${matched})`)
+      }
+      reader.readAsArrayBuffer(file)
+    } catch (err) {
+      flash('⚠️ Error al procesar archivo de Ruteo')
+    }
+  }
+
   // ISO mapping for duplicates
   const dashboardIsos = rows.reduce((acc, r) => {
     if (r.ISO) {
@@ -400,6 +462,7 @@ export default function RuteadorV9() {
                 onConversionUpload={handleConversionUpload}
                 onOriginCross={handleOriginCross}
                 onDestinoCross={handleDestinoCross}
+                onRuteoUpload={handleRuteoUpload}
                 pvPlanName={pvPlanName}
                 projectsName={projectsName}
                 TC={TC}
@@ -427,7 +490,7 @@ export default function RuteadorV9() {
 
           {tab === 'export' && (
             <motion.div key="export" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }} className="absolute inset-0">
-              <TabExport rows={rows} onExportJSON={exportJSON} />
+              <TabExport rows={rows} stats={stats} onExportJSON={exportJSON} />
             </motion.div>
           )}
 

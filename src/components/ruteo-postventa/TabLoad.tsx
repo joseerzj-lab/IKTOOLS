@@ -35,6 +35,7 @@ interface Props {
   onConversionUpload: (file: File) => void
   onDestinoCross: (planFile: File, convFile: File) => void
   onOriginCross: (file: File) => void
+  onRuteoUpload: (file: File) => void
   pvPlanName: string
   projectsName: string
   TC: any
@@ -50,6 +51,7 @@ export default function TabLoad({
   onConversionUpload,
   onDestinoCross,
   onOriginCross,
+  onRuteoUpload,
   pvPlanName,
   projectsName,
   TC
@@ -173,7 +175,22 @@ export default function TabLoad({
                   <span className="text-xs font-bold text-purple-400">Proyectos Leslie</span>
                   <span className="text-[10px] truncate" title={projectsName}>{projectsName || 'Cargar .xlsx de Proyectos...'}</span>
                 </div>
-                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => e.target.files?.[0] && onProjectsUpload(e.target.files[0])} />
+                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
+                  if (e.target.files?.[0]) onProjectsUpload(e.target.files[0])
+                  e.target.value = ''
+                }} />
+              </label>
+
+              <label className="flex items-center gap-3 p-3 rounded border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
+                <span className="text-2xl">📁</span>
+                <div className="flex flex-col overflow-hidden flex-1">
+                  <span className="text-xs font-bold text-blue-400">Archivo Ruteo</span>
+                  <span className="text-[10px] truncate">Cargar archivo de Ruteo (cruzará con Dashboard)</span>
+                </div>
+                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
+                  if (e.target.files?.[0]) onRuteoUpload(e.target.files[0])
+                  e.target.value = ''
+                }} />
               </label>
             </div>
           </Card>

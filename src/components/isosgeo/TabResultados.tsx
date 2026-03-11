@@ -1,6 +1,7 @@
 import { Clipboard, MapPin } from 'lucide-react'
 import { Btn } from '../../ui/DS'
 import type { GeoRow } from '../../types/isosgeo'
+import TableModal from '../reporte-rutas/TableModal'
 
 interface Props {
   results: GeoRow[]
@@ -13,9 +14,9 @@ export default function TabResultados({ results, copiar, TC }: Props) {
     <div className="flex-1 flex flex-col overflow-y-auto p-4" style={{ background: TC.bg }}>
       {/* ── Toolbar ── */}
       {results.length > 0 && (
-        <div className="flex justify-end mb-4">
+        <div className="flex justify-end mb-4 flex-shrink-0">
           <Btn onClick={copiar} size="sm">
-            <Clipboard size={14} /> Copiar tabla
+            <Clipboard size={14} /> Copiar Simple
           </Btn>
         </div>
       )}
@@ -30,36 +31,25 @@ export default function TabResultados({ results, copiar, TC }: Props) {
           </div>
         </div>
       ) : (
-        <div style={{ background: TC.bgCard, borderRadius: 8, border: `1px solid ${TC.borderSoft}`, overflow: 'hidden' }}>
-          <table className="w-full text-[11px] font-mono" style={{ borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                {['ISO', 'Patente', 'Estado', 'Vehículo Simpli', 'Análisis'].map(h => (
-                  <th key={h} className="text-left p-2 text-[10px] font-bold uppercase tracking-wider sticky top-0" 
-                      style={{ background: TC.bgCardAlt, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((r, i) => (
-                <tr key={i} className={`hover:bg-white/[.02] ${r._dup ? 'bg-rose-500/10' : ''}`} style={{ transition: 'background 0.1s' }}>
-                  <td className="p-2 font-bold" style={{ color: TC.text, borderBottom: `1px solid ${TC.borderSoft}` }}>{r.ISO}</td>
-                  <td className="p-2" style={{ color: TC.text, borderBottom: `1px solid ${TC.borderSoft}` }}>{r.PATENTE}</td>
-                  <td className="p-2" style={{ color: TC.text, borderBottom: `1px solid ${TC.borderSoft}` }}>{r.ESTADO}</td>
-                  <td className="p-2" style={{ color: TC.text, borderBottom: `1px solid ${TC.borderSoft}` }}>{r.VEHICULO}</td>
-                  <td className="p-2" style={{ borderBottom: `1px solid ${TC.borderSoft}` }}>
-                    {r.ANALISIS && (
-                      <span className="bg-rose-500/15 text-rose-400 text-[9px] font-bold px-2 py-0.5 rounded border border-rose-500/20">
-                        ⚠ {r.ANALISIS}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="flex-1 overflow-hidden" style={{ background: TC.bgCard, borderRadius: 8, border: `1px solid ${TC.borderSoft}` }}>
+          <TableModal
+            isOpen={true}
+            isInline={true}
+            onClose={() => {}}
+            title="Resultados del Cruce"
+            subtitle={`${results.length} registros procesados`}
+            data={results.map(r => ({
+              'ISO': r.ISO,
+              'Patente': r.PATENTE,
+              'Estado': r.ESTADO,
+              'Vehículo Simpli': r.VEHICULO,
+              'Análisis': r.ANALISIS || '',
+              '_dup': r._dup
+            }))}
+            columns={['ISO', 'Patente', 'Estado', 'Vehículo Simpli', 'Análisis']}
+            TC={TC}
+            isConflictModal={false}
+          />
         </div>
       )}
     </div>

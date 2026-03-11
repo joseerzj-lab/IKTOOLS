@@ -100,30 +100,81 @@ export default function RuteoPR() {
   const downloadPreola = ()=>{if(!dataF1) return addLog('Carga el archivo base','warn'); const f=dataF1.filter(r=>r['TIPO_VISITA']==='PROJECT'||r['TIPO_VISITA']==='POST_SALES'); if(!f.length) return addLog('Sin proyectos/post sales','warn'); const d=f.map(r=>({A:r['ID_REFERENCIA'],B:r['TIPO_VISITA']==='PROJECT'?'VEH98':'VEH99'})); exportXlsx(d,`3. ROUTE TO PROYECT+ POST SALES picking ${getFechaP()} entregas ${getFechaE()}.xlsx`,true); addLog('Preola exportada','ok')}
 
   const handleGenerarCorreo = () => {
-    if (!dataF1) return addLog('Carga el archivo base SCI primero', 'err')
-    const projects = dataF1.filter(r => r['TIPO_VISITA'] === 'PROJECT')
-    if (!projects.length) return addLog('No se encontraron órdenes de tipo PROJECT', 'warn')
+    if (!sheetResumenData.length || !metricsData) {
+      addLog('⚠️ Primero ejecuta el Polinomio (Post Ruteo) para generar los datos del correo', 'warn')
+      return
+    }
 
-    const tableStyle = "border-collapse:collapse;font-family:Aptos,sans-serif;font-size:11pt;width:100%;margin-top:15px;"
-    const thStyle = "border:1px solid #ddd;padding:8px;text-align:left;background-color:#f2f2f2;font-weight:bold;"
-    const tdStyle = "border:1px solid #ddd;padding:8px;text-align:left;"
+    const EMAIL_STYLES = {
+      tableWrap:   'width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px;margin-bottom:18px;',
+      th:          'background:#0058A3;color:#ffffff;font-weight:700;padding:7px 10px;border:1px solid #004080;text-align:center;white-space:nowrap;',
+      tdCenter:    'padding:6px 10px;border:1px solid #d0d0d0;text-align:center;color:#111;',
+      trAlt:       'background:#f0f6ff;',
+      trNormal:    'background:#ffffff;',
+    }
 
-    let tableHtml = `<table style="${tableStyle}"><thead><tr><th style="${thStyle}">ISO</th><th style="${thStyle}">DIRECCIÓN</th></tr></thead><tbody>`
-    projects.forEach(p => {
-      tableHtml += `<tr><td style="${tdStyle}">${p['ID_REFERENCIA'] || ''}</td><td style="${tdStyle}">${p['D_STREET'] || ''} ${p['D_NUMBER'] || ''}, ${p['D_COUNTY'] || ''}</td></tr>`
-    })
-    tableHtml += `</tbody></table>`
+    const miniTable = `
+      <table style="${EMAIL_STYLES.tableWrap}max-width:360px;">
+        <thead>
+          <tr>
+            <th style="${EMAIL_STYLES.th}">Vehículos</th>
+            <th style="${EMAIL_STYLES.th}">Promedio de ISO</th>
+            <th style="${EMAIL_STYLES.th}">Suma de ISO</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="${EMAIL_STYLES.trNormal}">
+            <td style="${EMAIL_STYLES.tdCenter}">${metricsData.total ?? '-'}</td>
+            <td style="${EMAIL_STYLES.tdCenter}">${metricsData.prom  ?? '-'}</td>
+            <td style="${EMAIL_STYLES.tdCenter}">${metricsData.sum   ?? '-'}</td>
+          </tr>
+        </tbody>
+      </table>`
 
-    const intro = `<p style="font-family:Aptos,sans-serif;font-size:11pt;">Hej Team!,<br><br>@Despacho Ecommerce WH Comparto las órdenes correspondientes al flujo de proyectos B2C que realizamos con Transportes Leslie, el día <strong>${getFechaE()}</strong>. Por favor, solicito su ayuda para procesar estas órdenes y ubicarlas en el andén 2A (Nave 4) para Transportes Leslie, diferenciadas de los envío retiro.</p>`
-    const fullHtml = intro + tableHtml
+    const EXCLUIDOS = new Set(["VEH98", "VEH99", "VEH101", "VEH102"])
+    const filas = sheetResumenData.filter(r => !EXCLUIDOS.has(String(r["Vehículo"]).toUpperCase()))
+    let resumenTable = '<p style="color:#888;font-size:12px;">Sin datos de resumen.</p>'
+
+    if (filas.length > 0) {
+      const cols = ["ANDEN","LADO","Vehículo","Distancia","Tiempo en Ruta","ISO","Q COMUNAS","M3","Horario salida","Zona","Tipo Vehículo","Tipo Ticket"]
+      const headers = cols.map(c => `<th style="${EMAIL_STYLES.th}">${c}</th>`).join('')
+      const rows = filas.map((r, idx) => {
+        const bg = idx % 2 === 0 ? EMAIL_STYLES.trNormal : EMAIL_STYLES.trAlt
+        const cells = cols.map(c => `<td style="${EMAIL_STYLES.tdCenter}">${r[c] ?? ''}</td>`).join('')
+        return `<tr style="${bg}">${cells}</tr>`
+      }).join('')
+      
+      resumenTable = `
+        <table style="${EMAIL_STYLES.tableWrap}">
+          <thead><tr>${headers}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`
+    }
+
+    const fullHtml = `
+      <div style="font-family:Arial,sans-serif;font-size:13px;color:#111;line-height:1.7;max-width:760px;">
+        <p style="margin:0 0 14px;">Team,</p>
+        <p style="margin:0 0 18px;">Esperando que se encuentren bien, les envío archivo con detalle de las rutas.</p>
+        <p style="margin:0 0 20px;">
+          <span style="background:#ffda1a;color:#000;font-weight:700;padding:3px 8px;border-radius:3px;">
+            Equipo la PRE-OLA ya se encuentra cargada a sistema
+          </span>
+        </p>
+        ${miniTable}
+        ${resumenTable}
+      </div>`
 
     const blob = new Blob([fullHtml], { type: 'text/html' })
-    const data = [new ClipboardItem({ 'text/html': blob, 'text/plain': new Blob([intro.replace(/<[^>]+>/g, '')], { type: 'text/plain' }) })]
+    const data = [new ClipboardItem({ 'text/html': blob })]
 
     navigator.clipboard.write(data).then(() => {
       addLog('✉️ Correo copiado al portapapeles (formato HTML)', 'ok')
     }).catch(() => {
-      addLog('❌ Error al copiar al portapapeles', 'err')
+      const tmp = document.createElement('div')
+      tmp.innerHTML = fullHtml
+      navigator.clipboard.writeText(tmp.innerText).then(() => {
+         addLog('✉️ Correo copiado como texto plano (Fallback)', 'warn')
+      })
     })
   }
 
@@ -216,15 +267,15 @@ export default function RuteoPR() {
             <div className="flex flex-col gap-4 max-w-lg">
               <Card style={{padding:24, textAlign:'center'}}>
                 <div className="text-3xl mb-4">✉️</div>
-                <h3 className="text-lg font-bold mb-2" style={{color:TC.text}}>Generar Correo Leslie</h3>
+                <h3 className="text-lg font-bold mb-2" style={{color:TC.text}}>Generar Correo de Polinomio</h3>
                 <p className="text-[11px] mb-6" style={{color:TC.textFaint}}>
-                  Crea una plantilla HTML con la tabla de órdenes de Proyectos para pegar directamente en Outlook. 
-                  Se utiliza la fecha de entrega: <strong>{getFechaE()}</strong>.
+                  Crea una plantilla HTML con la tabla de resumen y métricas de vehículos para pegar directamente en Outlook.
+                  Asegúrate de haber procesado el Polinomio (Post Ruteo) primero.
                 </p>
-                <Btn variant="primary" onClick={handleGenerarCorreo} disabled={!dataF1} style={{width:'100%', padding:'12px'}}>
+                <Btn variant="primary" onClick={handleGenerarCorreo} disabled={!sheetResumenData.length} style={{width:'100%', padding:'12px'}}>
                   Copiar Cuerpo del Correo
                 </Btn>
-                {!dataF1 && <p className="text-[9px] mt-2 text-red-400">⚠️ Falta cargar el archivo Base SCI</p>}
+                {!sheetResumenData.length && <p className="text-[9px] mt-2 text-red-400">⚠️ Falta ejecutar el Polinomio</p>}
               </Card>
             </div>
           )}

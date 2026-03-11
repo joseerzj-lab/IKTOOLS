@@ -1,6 +1,8 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme, getThemeColors } from '../../context/ThemeContext'
 import { C, T, R } from '../../ui/DS'
+import { useRef } from 'react'
+import { useTableSelection } from '../../hooks/useTableSelection'
 
 type ISORow = {
   iso: string
@@ -34,6 +36,9 @@ export default function TabResultados({ results, onCopiar }: Props) {
   const TC = getThemeColors(theme)
   const found    = results.filter(r => r.found).length
   const notFound = results.filter(r => !r.found).length
+  const tableRef = useRef<HTMLTableElement>(null)
+  
+  useTableSelection(tableRef)
 
   return (
     <div style={{
@@ -99,7 +104,7 @@ export default function TabResultados({ results, onCopiar }: Props) {
 
           {/* Table */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: T.base, fontFamily: T.fontMono }}>
+            <table ref={tableRef} style={{ width: '100%', borderCollapse: 'collapse', fontSize: T.base, fontFamily: T.fontMono }}>
               <thead>
                 <tr>
                   {HEADERS.map(h => (
