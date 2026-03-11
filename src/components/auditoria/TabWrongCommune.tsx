@@ -1,7 +1,7 @@
 import { useEffect, useRef, useMemo, useState } from 'react'
 import type { ComunaConflict, RouteRow } from '../../types/auditoria'
 import {
-  EmptyState, FilterPills, Btn, Badge, SearchInput,
+  EmptyState, FilterPills, Btn, Badge,
   C, T, R, SP
 } from '../../ui/DS'
 
@@ -204,6 +204,8 @@ export default function TabWrongCommune({
     }
     Object.entries(vehPts).forEach(([veh, pts]) => {
       if (pts.length < 2) return
+      if (focusedVeh && veh !== focusedVeh) return // Solo renderiza la ruta enfocada
+      
       const isFocusedVeh = focusedVeh ? veh === focusedVeh : true
       const line = L.polyline(pts, {
         color:   vehColors[veh] || '#4a9fd4',
@@ -220,6 +222,8 @@ export default function TabWrongCommune({
       const isResolved    = resolvedConflicts.has(r.iso)
       const isFocusedStop = focusedIso ? r.iso === focusedIso : true
       const isFocusedVehStop = focusedVeh ? r.veh === focusedVeh : true
+
+      if (focusedVeh && !isFocusedVehStop) return // Solo renderiza la ruta enfocada
 
       // Dim everything not related when focusing
       const dimmed = focusedVeh && !isFocusedVehStop
@@ -396,10 +400,11 @@ export default function TabWrongCommune({
 
         {/* Vehicle toggles */}
         {vehs.length > 0 && (
-          <div style={{
+          <div className="custom-scrollbar" style={{
             padding: `5px ${SP[2]}px`,
             borderBottom: `1px solid ${C.borderSoft}`,
             display: 'flex', flexWrap: 'wrap', gap: 4, flexShrink: 0,
+            maxHeight: 120, overflowY: 'auto',
           }}>
             {vehs.map(v => {
               const hidden = hiddenVehs.has(v)
@@ -424,11 +429,37 @@ export default function TabWrongCommune({
         {/* Search + filter */}
         {conflicts.length > 0 && (
           <div style={{
-            padding: `6px ${SP[2]}px`,
+            padding: `8px ${SP[3]}px`,
             borderBottom: `1px solid ${C.borderSoft}`,
-            display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0,
+            display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0,
           }}>
-            <SearchInput value={search} onChange={setSearch} placeholder="🔍 ISO, veh, comuna…" width={999} />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="🔍 Buscar ISO, vehículo, comuna…"
+              style={{
+                background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)',
+                borderTop: '1px solid rgba(255,255,255,0.2)',
+                borderLeft: '1px solid rgba(255,255,255,0.1)',
+                borderRight: '1px solid rgba(255,255,255,0.02)',
+                borderBottom: '1px solid rgba(255,255,255,0.02)',
+                boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.2)',
+                backdropFilter: 'blur(12px)',
+                borderRadius: R.lg,
+                padding: '8px 14px', fontSize: T.sm,
+                color: '#fff', outline: 'none',
+                width: '100%', fontFamily: T.fontFamily,
+                transition: 'all 0.2s',
+              }}
+              onFocus={(e) => {
+                e.target.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.05) 100%)'
+                e.target.style.boxShadow = '0 0 12px rgba(255,255,255,0.1), inset 0 2px 6px rgba(0,0,0,0.1)'
+              }}
+              onBlur={(e) => {
+                e.target.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)'
+                e.target.style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.2)'
+              }}
+            />
             <FilterPills<StatusFilter>
               value={statusFilter}
               onChange={setStatusFilter}
@@ -459,18 +490,12 @@ export default function TabWrongCommune({
             return (
               <div key={c._id}
                 onClick={() => {
-                  setSelected(c.iso)
-
-                  // If alerta → focus/zoom; click again on same to deselect focus
-                  if (isFlagged) {
-                    setFocusedIso(prev => prev === c.iso ? null : c.iso)
-                  } else {
-                    // Normal: just pan to the stop
+                  if (focusedIso === c.iso) {
                     setFocusedIso(null)
-                    const map = mapRef.current
-                    if (map && c.lat && c.lng) {
-                      map.setView([c.lat, c.lng], Math.max(map.getZoom(), 15), { animate: true })
-                    }
+                    setSelected(null)
+                  } else {
+                    setFocusedIso(c.iso)
+                    setSelected(c.iso)
                   }
                 }}
                 style={{
@@ -493,13 +518,6 @@ export default function TabWrongCommune({
                       <span style={{ fontWeight: 700, fontSize: T.base, color: C.text, fontFamily: T.fontMono }}>{c.iso}</span>
                       {isFlagged  && <Badge variant="high">⚠</Badge>}
                       {isResolved && <Badge variant="low">✓</Badge>}
-                      {isFocused  && (
-                        <span style={{
-                          fontSize: 9, padding: '1px 5px', borderRadius: R.pill,
-                          background: 'rgba(251,146,60,.15)', color: C.orange,
-                          border: '1px solid rgba(251,146,60,.3)', fontWeight: 700,
-                        }}>🔍 zoom</span>
-                      )}
                     </div>
                     <div style={{ fontSize: T.xs, color: C.textFaint, marginBottom: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.veh}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>

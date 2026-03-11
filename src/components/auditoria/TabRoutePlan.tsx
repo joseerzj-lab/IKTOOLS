@@ -518,31 +518,30 @@ export default function TabRoutePlan({ routeData, riskResults, resolvedRisk, onR
       {/* ── Scrollable list ── */}
       <div
         ref={scrollRef}
+        className="custom-scrollbar"
         style={{
           flex: 1,
-          overflowY: 'auto',
+          minHeight: 0,
+          overflowY: 'scroll',
           overflowX: 'hidden',
           padding: '12px 14px 24px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8,
-          // Custom scrollbar
           scrollbarWidth: 'thin',
-          scrollbarColor: 'rgba(255,255,255,0.12) transparent',
+          scrollbarColor: 'rgba(255,255,255,0.18) transparent',
         }}
       >
         {entries.map(([veh, comunas], i) => (
-          <VehicleCard
-            key={veh}
-            veh={veh}
-            comunas={comunas}
-            riskResult={riskResults[veh]}
-            resolvedRisk={resolvedRisk}
-            onResolveRisk={onResolveRisk}
-            onOpenRouteMap={onOpenRouteMap}
-            hasGeo={routeData.some(r => r.veh === veh && r.lat !== null)}
-            index={i}
-          />
+          <div key={veh} style={{ marginBottom: 8 }}>
+            <VehicleCard
+              veh={veh}
+              comunas={comunas}
+              riskResult={riskResults[veh]}
+              resolvedRisk={resolvedRisk}
+              onResolveRisk={onResolveRisk}
+              onOpenRouteMap={onOpenRouteMap}
+              hasGeo={routeData.some(r => r.veh === veh && r.lat !== null)}
+              index={i}
+            />
+          </div>
         ))}
         {entries.length === 0 && search && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}

@@ -326,7 +326,7 @@ export default function TabDashboard({
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: TC.bg }}>
+    <div className="flex-1 h-full flex flex-col overflow-hidden" style={{ background: TC.bg }}>
       {/* Stats bar */}
       {rows.length > 0 && (
         <div className="flex items-center gap-3 px-4 py-2 border-b flex-wrap" style={{ borderColor: TC.borderSoft }}>
@@ -436,7 +436,7 @@ export default function TabDashboard({
       )}
 
       {/* Grid */}
-      <div className="flex-1 overflow-auto custom-scrollbar" id="dashboard-table-container">
+      <div className="flex-1 min-h-0 overflow-auto custom-scrollbar" id="dashboard-table-container">
         {rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-5 p-10 text-center">
             <div className="w-20 h-20 rounded-[2rem] bg-blue-500/5 border-2 border-dashed flex items-center justify-center mb-2" style={{ borderColor: TC.borderSoft }}>

@@ -9,6 +9,7 @@ interface ProjectRow {
   DIRECCIÓN: string;
   VEHÍCULO?: string;
   _tipo: 'uno' | 'dos';
+  [key: string]: any;
 }
 
 interface Props {
@@ -22,10 +23,14 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
   const TC = getThemeColors(theme)
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  const buildHTMLTable = (data: any[], cols: string[]) => {
+  const buildHTMLTable = (data: any[], cols: string[], clean = false) => {
     const tableStyle = "border-collapse:collapse;font-family:Aptos,Calibri,Arial,sans-serif;font-size:12pt;width:100%;"
-    const thStyle = "border:1px solid black;padding:6px 10px;font-weight:bold;text-align:center;background:#0051BA;color:#FFDA1A;"
-    const tdStyle = "border:1px solid black;padding:5px 10px;text-align:center;color:#000000;background:#ffffff;"
+    const thStyle = clean 
+      ? "border:1px solid black;padding:6px 10px;font-weight:bold;text-align:center;background:none;color:#000000;"
+      : "border:1px solid black;padding:6px 10px;font-weight:bold;text-align:center;background:#0051BA;color:#FFDA1A;"
+    const tdStyle = clean
+      ? "border:1px solid black;padding:5px 10px;text-align:center;color:#000000;background:none;"
+      : "border:1px solid black;padding:5px 10px;text-align:center;color:#000000;background:#ffffff;"
 
     let html = `<table style="${tableStyle}"><thead><tr>`
     cols.forEach(c => { html += `<th style="${thStyle}">${c}</th>` })
@@ -110,7 +115,10 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
       if (!proyectosData.length) return onNotify('⚠️ Sin datos de Proyectos Leslie')
       const displayRows = proyectosData.filter(r => {
         const iso = (r.ISO || "").trim().toUpperCase();
-        return iso !== 'INICIO' && iso !== 'FIN';
+        // User asked to remove rows with type "Inicio" or "Fin"
+        // Also check "TIPO ISO" or similar just in case but ISO usually carries it
+        const tipoIso = (r['TIPO ISO'] || r['TIPO_ISO'] || "").trim().toUpperCase();
+        return iso !== 'INICIO' && iso !== 'FIN' && tipoIso !== 'INICIO' && tipoIso !== 'FIN';
       })
       
       const man = new Date(); man.setDate(man.getDate() + 1)
@@ -125,6 +133,69 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
       plain = `Hej Team!...\n\n${displayRows.map(r => `${r.ISO}\t${r.DIRECCIÓN}`).join('\n')}`
       title = 'Leslie'
     }
+    else if (id === 'ruteo_pm') {
+      const intro = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-bottom:12px;">Buenas tardes, comparto ruteos PM</p>`
+      
+      // 1. Repites
+      const dataRepites = rows.filter(r => String(r['CORREO REPITES']).toUpperCase() === 'SI')
+      let sectionRepites = ''
+      if (dataRepites.length) {
+        sectionRepites = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">Repites</p>` 
+          + buildHTMLTable(dataRepites, ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO'], true)
+      }
+
+      // 2. Postventa
+      const isPV = (v: any) => {
+        const u = String(v || '').trim().toUpperCase()
+        return u.includes('POST VENTA') || u.includes('POSTVENTA')
+      }
+      const dataPV = rows.filter(r => isPV(r.DESTINO))
+      let sectionPV = ''
+      if (dataPV.length) {
+        sectionPV = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">Postventa</p>`
+          + buildHTMLTable(dataPV, ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO'], true)
+      }
+
+      // 3. K8
+      const isK8 = (r: Row) => {
+        const comm = String(r.COMENTARIO_RAW || '').toUpperCase()
+        const gest = String(r.GESTIÓN || '').toUpperCase()
+        return comm.includes('K8') || gest.includes('K8')
+      }
+      const dataK8 = rows.filter(isK8)
+      let sectionK8 = ''
+      if (dataK8.length) {
+        sectionK8 = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">K8</p>`
+          + buildHTMLTable(dataK8, ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO'], true)
+      }
+
+      // 4. Proyectos
+      // Logic for driver "Francisco Javier diaz zamora" -> VEH98
+      // Logic for "Proyecto_cocinas" -> VEH98 ADICIONAL
+      // Exclude "Inicio"/"Fin"
+      const dataProy = rows.filter(r => {
+        const cond = String(r.CONDUCTOR || '').trim()
+        const iso = String(r.ISO || '').trim().toUpperCase()
+        if (iso === 'INICIO' || iso === 'FIN') return false
+        return cond === 'Francisco Javier diaz zamora' || cond === 'Proyecto_cocinas'
+      }).map(r => {
+        const cond = String(r.CONDUCTOR || '').trim()
+        return {
+          ...r,
+          DESTINO: cond === 'Francisco Javier diaz zamora' ? 'VEH98' : 'VEH98 ADICIONAL'
+        }
+      })
+      
+      let sectionProy = ''
+      if (dataProy.length) {
+        sectionProy = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">Proyectos</p>`
+          + buildHTMLTable(dataProy, ['ISO', 'DESTINO'], true)
+      }
+
+      html = intro + sectionRepites + sectionPV + sectionK8 + sectionProy
+      plain = `Buenas tardes, comparto ruteos PM\n\nRepites...\nPostventa...\nK8...\nProyectos...`
+      title = 'Ruteo PM'
+    }
 
     copyAsHTML(html, plain)
     setCopiedId(id)
@@ -133,7 +204,8 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
   }
 
   const templates = [
-    { id: 'repites', label: '📦 REPITES', desc: 'Para re-intentos de entrega', color: '#3b82f6' },
+    { id: 'ruteo_pm', label: '📦 RUTEO PM', desc: 'Resumen completo Repites, PV, K8 y Proyectos', color: '#f59e0b' },
+    { id: 'repites', label: '🔄 REPITES', desc: 'Para re-intentos de entrega', color: '#3b82f6' },
     { id: 'pv', label: '🚚 POST VENTA', desc: 'Gestión con Wilfredo Rugel', color: '#8b5cf6' },
     { id: 'leslie', label: '🏗️ LESLIE', desc: 'Proyectos B2C Leslie', color: '#10b981' },
   ]
