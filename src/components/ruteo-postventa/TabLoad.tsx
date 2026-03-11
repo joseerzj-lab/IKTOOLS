@@ -25,7 +25,6 @@ function parseRow(line: string, sep: string) {
 }
 
 interface Props {
-  columns: string[]
   rows: Row[]
   onMergeRows: (newCols: string[], newRows: Row[], source: string) => void
   onLoadJSON: (cols: string[], rows: Row[]) => void
@@ -42,7 +41,6 @@ interface Props {
 }
 
 export default function TabLoad({ 
-  columns, 
   rows, 
   onMergeRows, 
   onLoadJSON,
@@ -66,23 +64,87 @@ export default function TabLoad({
   const [planCrossFile, setPlanCrossFile] = useState<File | null>(null)
   const [convCrossFile, setConvCrossFile] = useState<File | null>(null)
 
-  const procesarDesdeTexto = (text: string, source: string) => {
-    const lines = text.split(/\r?\n/).filter(l => l.trim())
+  const procesarRepites = () => {
+    if (!pasteRepites.trim()) return
+    const lines = pasteRepites.split(/\r?\n/).filter(l => l.trim())
+    if (lines.length < 2) return
+    const sep = detectSep(lines[0])
+    const headers = parseRow(lines[0], sep).map(h => h.trim().toUpperCase())
+    
+    const data = lines.slice(1).map(line => {
+      const vals = parseRow(line, sep)
+      const r: any = {}
+      headers.forEach((h, i) => r[h] = vals[i] || '')
+      
+      const iso = r['ISO'] || ''
+      if (!iso) return null
+      
+      const com = (r['COMENTARIO'] || r['COMENTARIOS'] || "").toUpperCase()
+      const veh = (r['VEH'] || r['VEHICULO'] || "").toUpperCase()
+      const ori = r['ORIGEN'] || ""
+      let g = "REPITE"
+      
+      if (veh) {
+        const eyr = (com.includes("ENVIO") && com.includes("RETIRO")) || com.includes("ENVIO Y RETIRO")
+        const solo = com.includes("SOLO ENVIO") || com.includes("SOLO ENVÍO")
+        
+        if (veh.includes("PROYECTO LESLIE")) g = "REPITE PROYECTO"
+        else if (veh.includes("LESLIE")) g = eyr ? "ENVIO Y RETIRO" : solo ? "SOLO ENVIO" : "REPITE LESLIE"
+        else {
+          if (eyr) g = "ENVIO Y RETIRO"
+          else if (solo) g = "SOLO ENVIO"
+        }
+      }
+      
+      return {
+        ISO: iso,
+        'GESTIÓN': g,
+        ORIGEN: ori,
+        DESTINO: '',
+        VEH: veh,
+        'CORREO REPITES': 'SI',
+        COMENTARIO_RAW: com,
+        _SOURCE: 'Repites'
+      }
+    }).filter(Boolean) as Row[]
+    
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Repites')
+    setPasteRepites('')
+  }
+
+  const procesarRetiros = () => {
+    if (!pasteRetiros.trim()) return
+    const lines = pasteRetiros.split(/\r?\n/).filter(l => l.trim())
     if (lines.length < 2) return
     const sep = detectSep(lines[0])
     const headers = parseRow(lines[0], sep)
-    const data = lines.slice(1).map(line => {
+    const cIso = headers.find(k => k.toUpperCase().includes("ISO"))
+    if (!cIso) return alert("Falta columna ISO")
+    
+    const isoIdx = headers.indexOf(cIso)
+    const seen = new Set()
+    const data: Row[] = []
+    
+    lines.slice(1).forEach(line => {
       const vals = parseRow(line, sep)
-      const obj: Row = {}
-      headers.forEach((h, i) => obj[h] = vals[i] || '')
-      obj['_SOURCE'] = source
-      return obj
+      const iso = vals[isoIdx]?.trim()
+      if (!iso || seen.has(iso)) return
+      seen.add(iso)
+      data.push({
+        ISO: iso,
+        'GESTIÓN': 'RETIRO',
+        ORIGEN: 'RETIRO',
+        DESTINO: '',
+        VEH: '',
+        'CORREO REPITES': '',
+        COMENTARIO_RAW: '',
+        _SOURCE: 'Retiros'
+      })
     })
-    onMergeRows(headers, data, source)
+    
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Retiros')
+    setPasteRetiros('')
   }
-
-  const procesarRepites = () => { if (!pasteRepites.trim()) return; procesarDesdeTexto(pasteRepites, 'Repites'); setPasteRepites('') }
-  const procesarRetiros = () => { if (!pasteRetiros.trim()) return; procesarDesdeTexto(pasteRetiros, 'Retiros'); setPasteRetiros('') }
   const procesarEyRPaso1 = () => {
     if (!pasteEyR.trim()) return
     const lines = pasteEyR.split(/\r?\n/).filter(l => l.trim())
@@ -125,11 +187,18 @@ export default function TabLoad({
 
   const procesarK8 = () => {
     if (!pasteK8.trim()) return
-    const isos = pasteK8.split(/[\n\r,;\t ]+/).map(s => s.trim()).filter(Boolean)
-    const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
-    const newCols = columns.includes(isoCol) ? columns : [...columns, isoCol]
-    const newRows = isos.map(iso => ({ [isoCol]: iso, _SOURCE: 'K8' } as Row))
-    onMergeRows(newCols, newRows, 'K8')
+    const isos = pasteK8.split(/[\n\r,;\t ]+/).map(s => s.trim().toUpperCase()).filter(Boolean)
+    const data = isos.map(iso => ({
+      ISO: iso,
+      'GESTIÓN': 'K8',
+      ORIGEN: 'K8',
+      DESTINO: '',
+      VEH: '',
+      'CORREO REPITES': '',
+      COMENTARIO_RAW: 'K8',
+      _SOURCE: 'K8'
+    } as Row))
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'K8')
     setPasteK8('')
   }
 
