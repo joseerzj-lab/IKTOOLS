@@ -11,6 +11,9 @@ function detectSep(line: string) {
   return s > c ? ';' : ','
 }
 
+const normalizeHeader = (h: string) => 
+  h.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+
 function parseRow(line: string, sep: string) {
   const r: string[] = []
   let cur = '', inQ = false
@@ -69,14 +72,17 @@ export default function TabLoad({
     const lines = pasteRepites.split(/\r?\n/).filter(l => l.trim())
     if (lines.length < 2) return
     const sep = detectSep(lines[0])
-    const headers = parseRow(lines[0], sep).map(h => h.trim().toUpperCase())
+    const headers = parseRow(lines[0], sep).map(normalizeHeader)
     
     const data = lines.slice(1).map(line => {
       const vals = parseRow(line, sep)
       const r: any = {}
-      headers.forEach((h, i) => r[h] = vals[i] || '')
+      headers.forEach((h, i) => {
+        const val = vals[i] || ""
+        r[h] = val.trim().toUpperCase().replace(/\bNAN\b/g, "")
+      })
       
-      const iso = r['ISO'] || ''
+      const iso = r['ISO'] || ""
       if (!iso) return null
       
       const com = (r['COMENTARIO'] || r['COMENTARIOS'] || "").toUpperCase()
@@ -86,13 +92,13 @@ export default function TabLoad({
       
       if (veh) {
         const eyr = (com.includes("ENVIO") && com.includes("RETIRO")) || com.includes("ENVIO Y RETIRO")
-        const solo = com.includes("SOLO ENVIO") || com.includes("SOLO ENVÍO")
+        const legacySolo = com.includes("SOLO ENVIO") || com.includes("SOLO ENVÍO")
         
         if (veh.includes("PROYECTO LESLIE")) g = "REPITE PROYECTO"
-        else if (veh.includes("LESLIE")) g = eyr ? "ENVIO Y RETIRO" : solo ? "SOLO ENVIO" : "REPITE LESLIE"
+        else if (veh.includes("LESLIE")) g = eyr ? "ENVIO Y RETIRO" : legacySolo ? "SOLO ENVIO" : "REPITE LESLIE"
         else {
           if (eyr) g = "ENVIO Y RETIRO"
-          else if (solo) g = "SOLO ENVIO"
+          else if (legacySolo) g = "SOLO ENVIO"
         }
       }
       
@@ -117,17 +123,16 @@ export default function TabLoad({
     const lines = pasteRetiros.split(/\r?\n/).filter(l => l.trim())
     if (lines.length < 2) return
     const sep = detectSep(lines[0])
-    const headers = parseRow(lines[0], sep)
-    const cIso = headers.find(k => k.toUpperCase().includes("ISO"))
-    if (!cIso) return alert("Falta columna ISO")
+    const headers = parseRow(lines[0], sep).map(normalizeHeader)
+    const isoIdx = headers.findIndex(h => h.includes("ISO"))
+    if (isoIdx === -1) return alert("Falta columna ISO")
     
-    const isoIdx = headers.indexOf(cIso)
     const seen = new Set()
     const data: Row[] = []
     
     lines.slice(1).forEach(line => {
       const vals = parseRow(line, sep)
-      const iso = vals[isoIdx]?.trim()
+      const iso = vals[isoIdx]?.trim().toUpperCase()
       if (!iso || seen.has(iso)) return
       seen.add(iso)
       data.push({
@@ -150,19 +155,19 @@ export default function TabLoad({
     const lines = pasteEyR.split(/\r?\n/).filter(l => l.trim())
     if (lines.length < 2) return
     const sep = detectSep(lines[0])
-    const headers = parseRow(lines[0], sep)
+    const headersRaw = parseRow(lines[0], sep)
+    const headersNorm = headersRaw.map(normalizeHeader)
     
-    // Buscar la columna de ISO/ASO
-    const colIso = headers.find(h => h.toUpperCase().includes("ASO GENERADA") || h.toUpperCase().includes("ASO") || h.toUpperCase().includes("ISO"))
-    if (!colIso) return alert("Falta columna ASO/ISO")
+    // Buscar la columna de ISO/ASO usando headers normalizados
+    const isoIdx = headersNorm.findIndex(h => h.includes("ASO GENERADA") || h.includes("ASO") || h.includes("ISO"))
+    if (isoIdx === -1) return alert("Falta columna ASO/ISO")
 
     const isosGeneradas: string[] = []
     const newRows: Row[] = []
     
     lines.slice(1).forEach(line => {
       const vals = parseRow(line, sep)
-      const isoIdx = headers.indexOf(colIso)
-      const isoVal = vals[isoIdx]
+      const isoVal = vals[isoIdx]?.trim().toUpperCase()
       if (isoVal) {
         newRows.push({
           ISO: isoVal,
