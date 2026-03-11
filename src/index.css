@@ -306,3 +306,11 @@ body {
  . i k - c o p y - g l o w . i k - g l o w - s h o w   {   o p a c i t y :   1 ;   t r a n s f o r m :   t r a n s l a t e ( - 5 0 % , - 5 0 % )   s c a l e ( 1 ) ;   } 
   
  
+/* Cell selection */
+.ik-sel-cell { cursor: cell !important; user-select: none !important; position: relative; transition: background .07s; }
+.ik-sel-cell.ik-selected { background: rgba(0, 81, 186, .20) !important; outline: 1px solid rgba(0, 81, 186, .55); outline-offset: -1px; }
+.ik-sel-cell.ik-anchor { background: rgba(0, 81, 186, .32) !important; outline: 2px solid #0051BA !important; outline-offset: -2px; }
+
+/* Copy glow */
+.ik-copy-glow { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(.92); background: rgba(63, 185, 80, .12); border: 1px solid #3fb950; color: #3fb950; font-weight: 700; font-size: 13px; padding: 10px 26px; border-radius: 9px; z-index: 99999; pointer-events: none; opacity: 0; transition: opacity .18s, transform .18s; backdrop-filter: blur(8px); box-shadow: 0 0 32px rgba(63, 185, 80, .28); }
+.ik-copy-glow.ik-glow-show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
