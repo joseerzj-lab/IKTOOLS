@@ -109,12 +109,12 @@ export default function TabLoad({
         DESTINO: '',
         VEH: veh,
         'CORREO REPITES': 'SI',
-        COMENTARIO_RAW: com,
+        COMENTARIO: com,
         _SOURCE: 'Repites'
       }
     }).filter(Boolean) as Row[]
     
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Repites')
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO'], data, 'Repites')
     setPasteRepites('')
   }
 
@@ -142,12 +142,12 @@ export default function TabLoad({
         DESTINO: '',
         VEH: '',
         'CORREO REPITES': '',
-        COMENTARIO_RAW: '',
+        COMENTARIO: '',
         _SOURCE: 'Retiros'
       })
     })
     
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Retiros')
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO'], data, 'Retiros')
     setPasteRetiros('')
   }
   const procesarEyRPaso1 = () => {
@@ -176,7 +176,7 @@ export default function TabLoad({
           DESTINO: '',
           VEH: '',
           'CORREO REPITES': '',
-          COMENTARIO_RAW: '',
+          COMENTARIO: '',
           _SOURCE: 'EyR_Paso1'
         })
         isosGeneradas.push(isoVal)
@@ -184,7 +184,7 @@ export default function TabLoad({
     })
     
     if (newRows.length) {
-      onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], newRows, 'EyR Paso 1')
+      onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO'], newRows, 'EyR Paso 1')
       setEyRAsos(isosGeneradas.join(','))
       setPasteEyR('')
     }
@@ -200,10 +200,10 @@ export default function TabLoad({
       DESTINO: '',
       VEH: '',
       'CORREO REPITES': '',
-      COMENTARIO_RAW: 'K8',
+      COMENTARIO: 'K8',
       _SOURCE: 'K8'
     } as Row))
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'K8')
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO'], data, 'K8')
     setPasteK8('')
   }
 

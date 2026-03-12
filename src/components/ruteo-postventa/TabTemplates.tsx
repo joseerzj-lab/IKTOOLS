@@ -158,7 +158,7 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
 
       // 3. K8
       const isK8 = (r: Row) => {
-        const comm = String(r.COMENTARIO_RAW || '').toUpperCase()
+        const comm = String(r.COMENTARIO || '').toUpperCase()
         const gest = String(r.GESTIÓN || '').toUpperCase()
         return comm.includes('K8') || gest.includes('K8')
       }
