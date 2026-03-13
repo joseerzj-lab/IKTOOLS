@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import { useRef } from 'react'
 import type { TabKey } from './types'
 import { C, T, R } from '../../ui/DS'
 import { useTheme, getThemeColors } from '../../context/ThemeContext'
@@ -37,8 +38,32 @@ const BADGE: Record<string, { bg: string; color: string }> = {
 }
 
 export default function GlassHeader({ activeTab, onTabChange, badges, severities = {} }: Props) {
-  const { theme, toggle, isDark } = useTheme()
+  const { theme, setTheme, toggle, isDark } = useTheme()
   const TC = getThemeColors(theme)
+
+  const logoClickCount = useRef(0)
+  const logoClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleLogoClick = () => {
+    if (theme === 'landscape') {
+      setTheme('dark')
+      return
+    }
+
+    logoClickCount.current += 1
+    
+    if (logoClickTimer.current) clearTimeout(logoClickTimer.current)
+    
+    logoClickTimer.current = setTimeout(() => {
+      logoClickCount.current = 0
+    }, 500)
+
+    if (logoClickCount.current === 3) {
+      setTheme('landscape')
+      logoClickCount.current = 0
+      if (logoClickTimer.current) clearTimeout(logoClickTimer.current)
+    }
+  }
 
   const SEVERITY_PILL: Record<string, { bg: string; border: string; glow: string }> = {
     high:   { bg: 'rgba(248,81,73,0.22)',    border: 'rgba(248,81,73,0.5)',    glow: '0 0 16px rgba(248,81,73,0.3)' },
@@ -63,15 +88,39 @@ export default function GlassHeader({ activeTab, onTabChange, badges, severities
         <Link to="/" style={{ color: TC.text, display: 'flex', alignItems: 'center' }}>
           <ArrowLeft size={18} className="hover:opacity-70 transition-opacity" />
         </Link>
-        <div style={{
-          width: 24, height: 24, borderRadius: R.md,
-          background: 'linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, flexShrink: 0,
-          boxShadow: '0 2px 8px rgba(14,165,233,0.45)',
-        }}>
-          🚛
-        </div>
+        <motion.div 
+          onClick={handleLogoClick}
+          whileTap={{ scale: 0.9 }}
+          whileHover={{ scale: 1.05 }}
+          style={{
+            flexShrink: 0,
+            cursor: 'pointer',
+          }}
+        >
+          {theme === 'landscape' ? (
+            <div 
+              style={{
+                width: 32, height: 32, borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 15px rgba(255, 255, 255, 0.3)',
+                border: '1px solid rgba(255, 255, 255, 0.4)',
+                backdropFilter: 'blur(5px)'
+              }}
+            >
+              <span style={{ fontSize: 18 }}>🏔️</span>
+            </div>
+          ) : (
+            <img 
+              src={`${import.meta.env.BASE_URL}logo_ikea.png`}
+              alt="IKEA"
+              style={{
+                height: 22, 
+                width: 'auto'
+              }}
+            />
+          )}
+        </motion.div>
 
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
           <span style={{
@@ -80,23 +129,20 @@ export default function GlassHeader({ activeTab, onTabChange, badges, severities
             color: TC.text,
             fontFamily: T.fontFamily,
           }}>
-            Ruteo PM
-          </span>
-          <span style={{ fontSize: 9, color: '#38bdf8', fontWeight: 600, textTransform: 'uppercase' }}>
-            Afternoon Routing
+            RUTEOS PM
           </span>
         </div>
 
         {/* Theme toggle — top right */}
         <motion.button
-          onClick={toggle}
+          onClick={() => theme === 'landscape' ? setTheme('dark') : toggle()}
           whileTap={{ scale: 0.88 }}
           whileHover={{ scale: 1.1 }}
-          title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          title={theme === 'landscape' ? 'Salir del modo secreto' : (isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro')}
           style={{
             marginLeft: 'auto',
-            background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
-            border: `1px solid ${TC.border}`,
+            background: theme === 'landscape' ? 'rgba(255,255,255,0.15)' : (isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'),
+            border: `1px solid ${theme === 'landscape' ? 'rgba(255,255,255,0.4)' : TC.border}`,
             borderRadius: R.md,
             width: 26, height: 26,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -104,9 +150,11 @@ export default function GlassHeader({ activeTab, onTabChange, badges, severities
             fontSize: 13,
             flexShrink: 0,
             transition: 'background 0.2s',
+            color: TC.text,
+            boxShadow: theme === 'landscape' ? '0 0 10px rgba(255,255,255,0.2)' : 'none'
           }}
         >
-          {isDark ? '☀️' : '🌙'}
+          {theme === 'landscape' ? '🏔️' : (isDark ? '☀️' : '🌙')}
         </motion.button>
       </div>
 

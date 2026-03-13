@@ -104,11 +104,12 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
       const vehsPV = [...new Set(data.map(r => String(r.DESTINO || '').trim()).filter(Boolean))]
       const numVeh = vehsPV.length || 1
       const vehWord = numVeh === 1 ? '1 veh' : `${numVeh} veh`
+      const vehRequestMsg = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:12px;font-weight:bold;">se solicitan ${numVeh} vehiculos para cumplir con la programacion de postventa de mañana.</p>`
       
       const intro = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-bottom:12px;">Buenas tardes Wilfredo Rugel, Favor su ayuda gestionando ${vehWord}, para cumplir con la programación de post venta, @Despacho Ecommerce WH favor su ayuda gestionando los siguientes movimientos para armar las rutas:</p>`
       const table = buildHTMLTable(data, ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO'])
-      html = intro + table
-      plain = `Buenas tardes Wilfredo Rugel...\n\n${data.map(r => `${r.ISO}\t${r.GESTIÓN}\t${r.ORIGEN}\t${r.DESTINO}`).join('\n')}`
+      html = intro + table + vehRequestMsg
+      plain = `Buenas tardes Wilfredo Rugel...\n\n${data.map(r => `${r.ISO}\t${r.GESTIÓN}\t${r.ORIGEN}\t${r.DESTINO}`).join('\n')}\n\nse solicitan ${numVeh} vehiculos para cumplir con la programacion de postventa de mañana.`
       title = 'Post Venta'
     }
     else if (id === 'leslie') {
@@ -127,10 +128,17 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
       const isDos = proyectosData[0]?._tipo === 'dos'
       const cols = isDos ? ['VEHÍCULO', 'ISO', 'DIRECCIÓN'] : ['ISO', 'DIRECCIÓN']
       
+      // Calculate unique vehicles for Leslie
+      const uniqueVehLeslie = [...new Set(displayRows.map(r => String(r['VEHÍCULO'] || r['VEHICULO'] || '').trim()).filter(Boolean))]
+      const countVehLeslie = uniqueVehLeslie.length
+      const leslieRequestMsg = countVehLeslie === 2 
+        ? `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:12px;font-weight:bold;">@W se solicitan 2 vehiculos para cumplir con la programacion de proyectos de mañana.</p>`
+        : ''
+
       const intro = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-bottom:12px;line-height:1.6;">Hej Team!,<br><br>@Despacho Ecommerce WH Comparto las órdenes correspondientes al flujo de proyectos B2C que realizamos con Transportes Leslie, el día ${manStr}. Por favor, solicito su ayuda para procesar estas órdenes y ubicarlas en el andén 2A (Nave 4) para Transportes Leslie, diferenciadas de los envío retiro.</p>`
       const table = buildHTMLTable(displayRows, cols)
-      html = intro + table
-      plain = `Hej Team!...\n\n${displayRows.map(r => `${r.ISO}\t${r.DIRECCIÓN}`).join('\n')}`
+      html = intro + table + leslieRequestMsg
+      plain = `Hej Team!...\n\n${displayRows.map(r => `${r.ISO}\t${r.DIRECCIÓN}`).join('\n')}${countVehLeslie === 2 ? '\n\n@W se solicitan 2 vehiculos para cumplir con la programacion de proyectos de mañana.' : ''}`
       title = 'Leslie'
     }
     else if (id === 'ruteo_pm') {

@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { RiskResult, RouteRow } from '../../types/auditoria'
-import { C, T, R } from '../../ui/DS'
+import { C, T, R, Btn, Badge } from '../../ui/DS'
 
 interface Props {
   routeData:      RouteRow[]
@@ -10,6 +10,7 @@ interface Props {
   flaggedRisk:    Set<string>
   onToggleResolve:(aKey: string) => void
   onToggleFlag:   (aKey: string) => void
+  onResolveAll:   (isos: string[], aKeys: (string | null)[]) => void
   onOpenRouteMap: (veh: string) => void
   hasData:  boolean
   isReady:  boolean
@@ -129,12 +130,12 @@ function ISORow({
               background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
               backdropFilter: 'blur(8px)',
             }}
-          >{isResolved ? '↩' : '✓ Resolver'}</motion.button>
+          >{isResolved ? '↩' : '✓ Revisar'}</motion.button>
 
           <motion.button whileTap={{ scale: 0.9 }}
             onClick={onFlag}
             style={{
-              fontSize: 10, padding: '4px 10px', borderRadius: R.md, cursor: 'pointer', fontWeight: 700,
+              fontSize: 10, padding: '4px 10px', borderRadius: R.md, cursor: 'pointer', fontWeight: 800,
               background: isFlagged ? 'rgba(248,81,73,0.2)' : 'rgba(248,81,73,0.08)',
               color: C.red,
               border: `1px solid ${isFlagged ? C.redBorder : 'rgba(248,81,73,0.2)'}`,
@@ -241,7 +242,7 @@ function CommuneAccordion({
             <motion.button whileTap={{ scale: 0.9 }}
               onClick={() => onToggleResolve(communeKey)}
               style={{ fontSize: 9, padding: '3px 9px', borderRadius: R.pill, cursor: 'pointer', fontWeight: 700, background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}` }}
-            >{isCommuneResolved ? '↩' : '✓ Todo'}</motion.button>
+            >{isCommuneResolved ? '↩' : '✓ Todo Revisado'}</motion.button>
             <motion.button whileTap={{ scale: 0.9 }}
               onClick={() => onToggleFlag(communeKey)}
               style={{ fontSize: 9, padding: '3px 9px', borderRadius: R.pill, cursor: 'pointer', fontWeight: 700,
@@ -422,7 +423,7 @@ function VehicleSection({
 // ── Main ─────────────────────────────────────────────────────
 export default function TabOffRoute({
   routeData, riskResults, resolvedRisk, flaggedRisk,
-  onToggleResolve, onToggleFlag, onOpenRouteMap, hasData, isReady,
+  onToggleResolve, onToggleFlag, onResolveAll, onOpenRouteMap, hasData, isReady,
 }: Props) {
   const [search, setSearch] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -478,11 +479,16 @@ export default function TabOffRoute({
         ].map((s, i) => (
           <motion.div key={s.label} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
             style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-            <span style={{ fontSize: 19, fontWeight: 900, color: s.color, fontFamily: T.fontMono, lineHeight: 1 }}>{s.value}</span>
-            <span style={{ fontSize: 9, color: C.textFaint, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</span>
+            <span style={{ fontSize: 22, fontWeight: 900, color: s.color, fontFamily: T.fontMono, lineHeight: 1 }}>{s.value}</span>
+            <span style={{ fontSize: 10, color: C.text, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</span>
           </motion.div>
         ))}
-        <div style={{ marginLeft: 'auto' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <Btn variant="success" size="sm" onClick={() => {
+            const isos = sortedVehs.flatMap(([, v]) => v.results.flatMap(r => r.isos?.map(i => i.iso) ?? []))
+            const aKeys = sortedVehs.flatMap(([, v]) => v.results.map(r => `${v.veh}|${r.key}`))
+            onResolveAll(isos, aKeys)
+          }}>Revisar todo</Btn>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -490,7 +496,7 @@ export default function TabOffRoute({
             style={{
               background: 'var(--ar-bg-hover)', border: '1px solid var(--ar-border)',
               borderRadius: R.lg, padding: '5px 12px', fontSize: T.base,
-              color: C.textSub, outline: 'none', width: 200, fontFamily: T.fontFamily,
+              color: C.text, fontWeight: 600, outline: 'none', width: 200, fontFamily: T.fontFamily,
             }}
           />
         </div>

@@ -156,7 +156,6 @@ export default function ActualizarOtif() {
     <PageShell>
       <GlassHeader 
         appName="Actualizar OTIF"
-        appDesc="Proyectado · IKEA Ops"
         icon={<BarChart3 size={20} />}
         tabs={OTIF_TABS}
         activeTab={activeTab}

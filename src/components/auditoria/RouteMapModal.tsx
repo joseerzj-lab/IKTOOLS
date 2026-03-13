@@ -24,6 +24,23 @@ export default function RouteMapModal({ veh, routeData, riskResults, conflicts, 
     const L = (window as any).L
     if (!L) return
 
+    const style = document.createElement('style')
+    style.innerHTML = `
+      @keyframes pulse-error {
+        0% { box-shadow: 0 0 0 0 rgba(255, 75, 75, 0.7); }
+        70% { box-shadow: 0 0 0 12px rgba(255, 75, 75, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 75, 75, 0); }
+      }
+      @keyframes pulse-warn {
+        0% { box-shadow: 0 0 0 0 rgba(240, 136, 62, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(240, 136, 62, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(240, 136, 62, 0); }
+      }
+      .pulse-error { animation: pulse-error 2.5s infinite; }
+      .pulse-warn { animation: pulse-warn 2.5s infinite; }
+    `
+    document.head.appendChild(style)
+
     const pts = routeData
       .filter(r => r.veh === veh && r.lat !== null && r.lng !== null)
       .sort((a, b) => (a.parada || 0) - (b.parada || 0))
@@ -74,13 +91,24 @@ export default function RouteMapModal({ veh, routeData, riskResults, conflicts, 
       const risk = riskByKey[k] || { riskLevel: 'low', pct: 0 }
       const rl = risk.riskLevel
       const isRed = rl === 'high' || !!conf
-      const dotColor = isRed ? '#e04040' : rl === 'medium' ? '#f0883e' : '#4a9fd4'
-      const glow = (isRed || rl === 'medium') ? `box-shadow:0 0 8px 3px ${dotColor}66;` : ''
-      const sz = isRed ? 20 : rl === 'medium' ? 17 : 14
+      const dotColor = isRed ? '#ff4b4b' : rl === 'medium' ? '#f0883e' : '#4a9fd4'
+      const sz = isRed ? 24 : rl === 'medium' ? 20 : 16
       const stopNum = r.parada || (si + 1)
+      
+      const pulseClass = isRed ? 'pulse-error' : (rl === 'medium' ? 'pulse-warn' : '')
+      
       const icon = L.divIcon({
         className: '',
-        html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${dotColor};border:1.5px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:700;color:rgba(255,255,255,.95);font-family:monospace;cursor:pointer;box-sizing:border-box;${glow}">${stopNum}</div>`,
+        html: `
+          <div class="${pulseClass}" style="
+            width:${sz}px; height:${sz}px; border-radius:50%;
+            background:${dotColor}; border:2px solid #fff;
+            display:flex; align-items:center; justify-content:center;
+            font-size:9px; font-weight:900; color:#fff;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+            cursor:pointer;
+          ">${stopNum}</div>
+        `,
         iconSize: [sz, sz], iconAnchor: [sz/2, sz/2]
       })
 

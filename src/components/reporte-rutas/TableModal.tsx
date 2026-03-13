@@ -36,6 +36,7 @@ export default function TableModal({
   const [sortDir, setSortDir] = useState<1 | -1>(1)
   const [activePopup, setActivePopup] = useState<string | null>(null)
   const [popupSearch, setPopupSearch] = useState('')
+  const [tempSelected, setTempSelected] = useState<Set<string>>(new Set())
   const [editMode, setEditMode] = useState(false)
 
   // Cell selection state
@@ -164,6 +165,8 @@ export default function TableModal({
     } else {
       setActivePopup(col)
       setPopupSearch('')
+      const uniqueVals = Array.from(new Set(data.map(r => String(r[col] ?? ''))))
+      setTempSelected(colFilters[col] ? new Set(colFilters[col]) : new Set(uniqueVals))
     }
   }
 
@@ -350,16 +353,16 @@ export default function TableModal({
                           <div className="flex gap-2 mb-2 text-[10px]">
                             <button onClick={() => {
                               const uniqueVals = Array.from(new Set(data.map(r => String(r[col] ?? ''))))
-                              applyPopupFilter(col, new Set(uniqueVals))
+                              setTempSelected(new Set(uniqueVals))
                             }} className="text-blue-500 hover:underline">Todos</button>
-                            <button onClick={() => applyPopupFilter(col, new Set())} className="text-blue-500 hover:underline">Ninguno</button>
+                            <button onClick={() => setTempSelected(new Set())} className="text-blue-500 hover:underline">Ninguno</button>
                           </div>
                           
                           <div className="max-h-40 overflow-y-auto mb-3 flex flex-col gap-1 text-[11px]">
                             {(() => {
                               const uniqueVals = Array.from(new Set(data.map(r => String(r[col] ?? '')))).sort()
                               const filteredVals = uniqueVals.filter(v => v.toLowerCase().includes(popupSearch.toLowerCase()))
-                              const currentSelected = colFilters[col] || new Set(uniqueVals)
+                              const currentSelected = tempSelected
                               
                               return filteredVals.map(v => (
                                 <label key={v} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 p-1 rounded">
@@ -367,10 +370,10 @@ export default function TableModal({
                                     type="checkbox" 
                                     checked={currentSelected.has(v)}
                                     onChange={(e) => {
-                                      const next = new Set(currentSelected)
+                                      const next = new Set(tempSelected)
                                       if (e.target.checked) next.add(v)
                                       else next.delete(v)
-                                      setColFilters(p => ({...p, [col]: next})) // temporary state
+                                      setTempSelected(next)
                                     }}
                                   />
                                   <span className="truncate">{v || '(vacío)'}</span>
@@ -380,7 +383,7 @@ export default function TableModal({
                           </div>
                           
                           <div className="flex gap-2">
-                            <Btn variant="primary" onClick={() => applyPopupFilter(col, colFilters[col] || new Set())} style={{ flex: 1, padding: '4px', fontSize: 10 }}>Aplicar</Btn>
+                            <Btn variant="primary" onClick={() => applyPopupFilter(col, tempSelected)} style={{ flex: 1, padding: '4px', fontSize: 10 }}>Aplicar</Btn>
                             <Btn onClick={() => setActivePopup(null)} style={{ flex: 1, padding: '4px', fontSize: 10 }}>Cancelar</Btn>
                           </div>
                         </div>

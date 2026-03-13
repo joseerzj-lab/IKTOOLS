@@ -1,9 +1,10 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Route, Truck, BarChart2, BarChart3, Clock, MapPin,
   Search, CheckSquare, ExternalLink,
-  Package, LayoutDashboard, Settings
+  Package, Settings
 } from 'lucide-react'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
 import { T, R } from '../ui/DS'
@@ -125,21 +126,46 @@ const item = {
 }
 
 export default function Menu() {
-  const { theme, toggle, isDark } = useTheme()
+  const { theme, toggle, isDark, setTheme } = useTheme()
   const TC = getThemeColors(theme)
+
+  const [logoClicks, setLogoClicks] = useState(0)
+  const [lastClickTime, setLastClickTime] = useState(0)
+
+  const handleLogoClick = () => {
+    const now = Date.now()
+    if (theme === 'landscape') {
+      setTheme('dark')
+      return
+    }
+    
+    if (now - lastClickTime < 500) {
+      const newClicks = logoClicks + 1
+      setLogoClicks(newClicks)
+      if (newClicks >= 2) {
+        setTheme('landscape')
+        setLogoClicks(0)
+      }
+    } else {
+      setLogoClicks(0)
+    }
+    setLastClickTime(now)
+  }
 
   return (
     <div 
       className="h-screen overflow-y-auto relative transition-colors duration-300 custom-scrollbar"
-      style={{ background: TC.bg, color: TC.text, fontFamily: T.fontFamily }}
+      style={{ background: theme === 'landscape' ? 'transparent' : TC.bg, color: TC.text, fontFamily: T.fontFamily }}
     >
       {/* Target ambient glow similar to Auditoria */}
       <div
         className="pointer-events-none fixed inset-0 z-0 transition-opacity duration-500"
         style={{
-          background: isDark 
-            ? 'radial-gradient(ellipse 60% 40% at 50% -10%, rgba(56,139,253,0.12) 0%, transparent 70%)'
-            : 'radial-gradient(ellipse 60% 40% at 50% -10%, rgba(56,139,253,0.06) 0%, transparent 70%)',
+          background: theme === 'landscape'
+            ? 'radial-gradient(ellipse 60% 40% at 50% -10%, rgba(255,255,255,0.15) 0%, transparent 70%)'
+            : isDark 
+              ? 'radial-gradient(ellipse 60% 40% at 50% -10%, rgba(56,139,253,0.12) 0%, transparent 70%)'
+              : 'radial-gradient(ellipse 60% 40% at 50% -10%, rgba(56,139,253,0.06) 0%, transparent 70%)',
         }}
       />
 
@@ -156,24 +182,48 @@ export default function Menu() {
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '12px 24px', maxWidth: '1200px', margin: '0 auto'
         }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: R.md,
-            background: 'linear-gradient(135deg,#003A8C 0%,#0051BA 55%,#1a6dd4 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14, flexShrink: 0,
-            boxShadow: '0 2px 8px rgba(0,81,186,0.45)',
-          }}>
-            <LayoutDashboard size={14} color="white" />
-          </div>
+          {theme === 'landscape' ? (
+            <div 
+              onClick={handleLogoClick}
+              style={{
+                width: 32, height: 32, borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 15px rgba(255, 255, 255, 0.3)',
+                cursor: 'pointer', flexShrink: 0,
+                border: '1px solid rgba(255, 255, 255, 0.4)',
+                backdropFilter: 'blur(5px)'
+              }}
+            >
+              <span style={{ fontSize: 18 }}>🏔️</span>
+            </div>
+          ) : (
+            <img 
+              src={`${import.meta.env.BASE_URL}logo_ikea.png`}
+              onClick={handleLogoClick}
+              alt="IKEA"
+              style={{
+                height: 24, 
+                width: 'auto',
+                cursor: 'pointer',
+                flexShrink: 0
+              }}
+            />
+          )}
 
-          <span style={{
-            fontSize: 11, fontWeight: 800,
-            letterSpacing: '0.18em',
-            color: TC.textDisabled,
-            textTransform: 'uppercase',
-          }}>
-            IKEA Ops Tools
-          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
+            <h1 style={{
+              fontSize: 22, fontWeight: 900,
+              letterSpacing: '0.05em',
+              color: TC.text,
+              textTransform: 'uppercase',
+              margin: 0,
+              fontFamily: T.fontFamily,
+              textShadow: theme === 'landscape' ? '0 2px 10px rgba(0,0,0,0.3)' : 'none'
+            }}>
+              MENÚ PRINCIPAL
+            </h1>
+          </div>
 
           {/* Theme toggle — top right */}
           <motion.button

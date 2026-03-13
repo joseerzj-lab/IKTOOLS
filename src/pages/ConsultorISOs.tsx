@@ -131,8 +131,7 @@ export default function ConsultorISOs() {
   return (
     <PageShell>
       <GlassHeader 
-        appName="Consultor ISOs"
-        appDesc="Matcher & Data Look-up"
+        appName="CONSULTOR ISOS"
         icon="🔍"
         tabs={ISO_TABS}
         activeTab={activeTab}

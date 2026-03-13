@@ -182,7 +182,6 @@ export default function RuteoPR() {
     <PageShell>
       <GlassHeader 
         appName="AM Route Builder"
-        appDesc="Pre-Route · Post-Route"
         icon="📦"
         tabs={PR_TABS}
         activeTab={tab}

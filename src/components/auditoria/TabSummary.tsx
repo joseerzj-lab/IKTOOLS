@@ -16,7 +16,7 @@ interface Props {
   flaggedRisk:       Set<string>
 }
 
-const STATUS_ORDER: Record<string, number> = { pendiente: 0, alerta: 1, resuelto: 2, aprobado: 2 }
+const STATUS_ORDER: Record<string, number> = { pendiente: 0, alerta: 1, revisado: 2, aprobado: 2 }
 
 function escHtml(s: string) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -30,7 +30,7 @@ function exportXLSX(rows: SummaryRow[]) {
   const wsData = [['ISO', 'Vehículo', 'Dirección', 'Observación', 'Detalle', 'Estado']]
   for (const r of rows) {
     wsData.push([r.iso, r.veh, r.dir || '', r.obs || '', r.detalle || '',
-      r.status === 'resuelto' ? 'Resuelto' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'])
+      r.status === 'revisado' ? 'Revisado' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'])
   }
   const ws = W.utils.aoa_to_sheet(wsData)
   ws['!cols'] = [{wch:14},{wch:20},{wch:45},{wch:20},{wch:55},{wch:14}]
@@ -45,7 +45,7 @@ function copyToClipboard(rows: SummaryRow[]) {
   let rich = `<table style="border-collapse:collapse"><tr><th style="${hS}">ISO</th><th style="${hS}">Vehículo</th><th style="${hS}">Dirección</th><th style="${hS}">Observación</th><th style="${hS}">Detalle</th><th style="${hS}">Estado</th></tr>`
   let plain = 'ISO\tVehículo\tDirección\tObservación\tDetalle\tEstado\n'
   for (const r of rows) {
-    const estado = r.status === 'resuelto' ? 'Resuelto' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'
+    const estado = r.status === 'revisado' ? 'Revisado' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'
     rich += `<tr><td style="${tS}font-weight:700">${escHtml(r.iso)}</td><td style="${tS}">${escHtml(r.veh)}</td><td style="${tS}">${escHtml(r.dir||'')}</td><td style="${tS}">${escHtml(r.obs||'')}</td><td style="${tS}">${escHtml(r.detalle||'')}</td><td style="${tS}">${estado}</td></tr>`
     plain += `${r.iso}\t${r.veh}\t${r.dir||''}\t${r.obs||''}\t${r.detalle||''}\t${estado}\n`
   }
@@ -55,7 +55,7 @@ function copyToClipboard(rows: SummaryRow[]) {
   } catch { navigator.clipboard.writeText(plain) }
 }
 
-type StatusFilter = 'all' | 'pendiente' | 'alerta' | 'resuelto'
+type StatusFilter = 'all' | 'pendiente' | 'alerta' | 'revisado'
 type TypeFilter   = 'all' | 'geo' | 'fuera' | 'ambos'
 
 export default function TabSummary({ rows }: Props) {
@@ -64,6 +64,11 @@ export default function TabSummary({ rows }: Props) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [sortCol, setSortCol]         = useState<string | null>(null)
   const [sortDir, setSortDir]         = useState<'asc'|'desc'>('asc')
+
+  // Selection state
+  const [selectionStart, setSelectionStart] = useState<{row: number, col: number} | null>(null)
+  const [selectionEnd,   setSelectionEnd]   = useState<{row: number, col: number} | null>(null)
+  const [isSelecting,    setIsSelecting]    = useState(false)
 
   function toggleSort(col: string) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -74,7 +79,7 @@ export default function TabSummary({ rows }: Props) {
     let r = rows.filter(row => {
       if (typeFilter !== 'all' && row.tipo !== typeFilter) return false
       if (statusFilter !== 'all') {
-        const s = row.status === 'aprobado' ? 'resuelto' : row.status
+        const s = row.status === 'aprobado' ? 'revisado' : row.status
         if (s !== statusFilter) return false
       }
       if (search) {
@@ -103,9 +108,11 @@ export default function TabSummary({ rows }: Props) {
   if (!rows.length) return <EmptyState icon="📊" message="Carga un plan y ejecuta los análisis para ver el resumen aquí." />
 
   const th: React.CSSProperties = {
-    padding: '7px 12px', textAlign: 'left', color: C.textFaint,
-    fontWeight: 600, fontSize: T.base, cursor: 'pointer', whiteSpace: 'nowrap',
-    borderBottom: `1px solid ${C.border}`,
+    padding: '10px 12px', textAlign: 'left', color: C.text,
+    fontWeight: 800, fontSize: T.base, cursor: 'pointer', whiteSpace: 'nowrap',
+    borderBottom: `2px solid ${C.border}`,
+    letterSpacing: '0.02em',
+    textTransform: 'uppercase',
   }
   const td: React.CSSProperties = {
     padding: '6px 12px', fontSize: T.base,
@@ -120,6 +127,41 @@ export default function TabSummary({ rows }: Props) {
     { key: 'detalle', label: 'Detalle' },
     { key: 'status',  label: 'Estado' },
   ]
+
+  const isSelected = (r: number, c: number) => {
+    if (!selectionStart || !selectionEnd) return false
+    const r1 = Math.min(selectionStart.row, selectionEnd.row)
+    const r2 = Math.max(selectionStart.row, selectionEnd.row)
+    const c1 = Math.min(selectionStart.col, selectionEnd.col)
+    const c2 = Math.max(selectionStart.col, selectionEnd.col)
+    return r >= r1 && r <= r2 && c >= c1 && c <= c2
+  }
+
+  const handleCopySelection = () => {
+    if (!selectionStart || !selectionEnd) return
+    const r1 = Math.min(selectionStart.row, selectionEnd.row)
+    const r2 = Math.max(selectionStart.row, selectionEnd.row)
+    const c1 = Math.min(selectionStart.col, selectionEnd.col)
+    const c2 = Math.max(selectionStart.col, selectionEnd.col)
+
+    let text = ''
+    for (let i = r1; i <= r2; i++) {
+        const row = visible[i]
+        const rowCells: any[] = []
+        for (let j = c1; j <= c2; j++) {
+            const key = COLS[j].key
+            let val = (row as any)[key] ?? ''
+            if (key === 'status') {
+              val = row.status === 'revisado' ? 'Revisado' : row.status === 'aprobado' ? 'Aprobado' : row.status === 'alerta' ? 'Alerta' : 'Pendiente'
+            }
+            rowCells.push(val)
+        }
+        text += rowCells.join('\t') + '\n'
+    }
+    navigator.clipboard.writeText(text).then(() => {
+        // toast? Or just subtle UI feedback
+    })
+  }
 
   return (
     <PageShell>
@@ -148,7 +190,7 @@ export default function TabSummary({ rows }: Props) {
                 { key: 'all',       label: 'Todos' },
                 { key: 'pendiente', label: '⏳ Pendiente' },
                 { key: 'alerta',    label: '⚠ Alerta' },
-                { key: 'resuelto',  label: '✓ Resuelto' },
+                { key: 'revisado',  label: '✓ Revisado' },
               ]}
             />
           </>
@@ -177,7 +219,7 @@ export default function TabSummary({ rows }: Props) {
           </thead>
           <tbody>
             {visible.map((r, i) => {
-              const isRes = r.status === 'resuelto' || r.status === 'aprobado'
+              const isRes = r.status === 'revisado' || r.status === 'aprobado'
               const isFlg = r.status === 'alerta'
 
               const tipoEl = r.tipo === 'fuera'
@@ -187,39 +229,48 @@ export default function TabSummary({ rows }: Props) {
                   : <Badge variant="blue">C. Incorrecta</Badge>
 
               const statusEl = isRes
-                ? <span style={{ color: C.green, fontWeight: 700, fontSize: T.base }}>✓ {r.status === 'aprobado' ? 'Aprobado' : 'Resuelto'}</span>
+                ? <span style={{ color: C.green, fontWeight: 800, fontSize: T.base }}>✓ {r.status === 'aprobado' ? 'Aprobado' : 'Revisado'}</span>
                 : isFlg
-                  ? <span style={{ color: C.red, fontWeight: 700, fontSize: T.base }}>⚠ Alerta</span>
-                  : <span style={{ color: C.orange, fontWeight: 700, fontSize: T.base }}>⏳ Pendiente</span>
+                  ? <span style={{ color: C.red, fontWeight: 800, fontSize: T.base }}>⚠ Alerta</span>
+                  : <span style={{ color: C.orange, fontWeight: 800, fontSize: T.base }}>⏳ Pendiente</span>
 
               return (
                 <tr key={r.iso + i}
+                  onMouseUp={() => { setIsSelecting(false); if (selectionStart && selectionEnd) handleCopySelection() }}
                   style={{
-                    opacity: isRes ? 0.4 : 1,
+                    opacity: isRes ? 0.45 : 1,
                     background: i % 2 === 0 ? 'transparent' : 'var(--ar-bg-hover)',
+                    transition: 'opacity 0.2s',
                   }}>
-                  <td style={{ ...td, textAlign: 'center', color: C.textFaint, fontSize: T.sm }}>{i + 1}</td>
+                  <td style={{ ...td, textAlign: 'center', color: C.text, fontWeight: 700, fontSize: T.sm, background: 'var(--ar-bg-card)', borderRight: `1px solid ${C.border}` }}>{i + 1}</td>
 
-                  {/* ISO — clickable to copy */}
-                  <td style={{ ...td, fontWeight: 700 }}>
-                    <button onClick={() => navigator.clipboard.writeText(r.iso).catch(() => {})}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.blue, fontWeight: 700, fontSize: T.base, fontFamily: T.fontMono, padding: 0 }}
-                      title="Copiar ISO"
-                    >{r.iso}</button>
-                  </td>
-
-                  <td style={{ ...td, color: C.textMuted, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.veh}>{r.veh}</td>
-                  <td style={{ ...td, color: C.textFaint, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.dir}>{r.dir || '—'}</td>
-
-                  <td style={td}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {tipoEl}
-                      <span style={{ color: C.textMuted, fontSize: T.sm }}>{r.obs}</span>
-                    </div>
-                  </td>
-
-                  <td style={{ ...td, color: C.textFaint, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.detalle}>{r.detalle || '—'}</td>
-                  <td style={{ ...td, whiteSpace: 'nowrap' }}>{statusEl}</td>
+                  {COLS.map((col, j) => {
+                    const sel = isSelected(i, j)
+                    return (
+                      <td key={col.key}
+                        onMouseDown={() => { setSelectionStart({row: i, col: j}); setSelectionEnd({row: i, col: j}); setIsSelecting(true) }}
+                        onMouseEnter={() => { if (isSelecting) setSelectionEnd({row: i, col: j}) }}
+                        style={{
+                          ...td,
+                          color: col.key === 'iso' ? C.blue : C.text,
+                          fontWeight: col.key === 'iso' ? 800 : 500,
+                          background: sel ? 'rgba(56,139,253,0.15)' : 'transparent',
+                          maxWidth: col.key === 'dir' || col.key === 'detalle' ? 240 : 'auto',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          userSelect: 'none',
+                        }}
+                        title={String((r as any)[col.key] ?? '')}
+                      >
+                        {col.key === 'status' ? statusEl : 
+                         col.key === 'obs' ? (
+                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                             {tipoEl}
+                             <span style={{ color: C.textMuted, fontSize: T.sm }}>{r.obs}</span>
+                           </div>
+                         ) : String((r as any)[col.key] ?? '—')}
+                      </td>
+                    )
+                  })}
                 </tr>
               )
             })}

@@ -71,7 +71,6 @@ export default function RuteadorV9() {
     })
 
     flash(`✓ ${newRows.length} filas agregadas desde ${source}`)
-    setTab('dashboard')
   }
 
   const onLoadJSON = (cols: string[], rows: Row[]) => {
@@ -79,7 +78,6 @@ export default function RuteadorV9() {
     setRows(rows)
     setVisibleCols(new Set(cols))
     flash('✓ Sesión cargada correctamente')
-    setTab('dashboard')
   }
 
   const updateCell = (ri: number, col: string, val: string) => {
@@ -111,7 +109,6 @@ export default function RuteadorV9() {
     setRows([newRow])
     
     flash('✓ Nueva tabla creada')
-    setTab('dashboard')
   }
 
   const exportJSON = () => {
@@ -151,7 +148,6 @@ export default function RuteadorV9() {
         setPvPlanData(isos)
         setPvPlanName(file.name)
         flash(`✓ ${isos.length} ISOs de Postventa cargadas`)
-        setTab('duplicates')
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer el plan') }
@@ -206,7 +202,6 @@ export default function RuteadorV9() {
         })
         if (updated > 0) {
             flash(`✓ ${updated} vehículos convertidos (${mapCount} reglas)`)
-            setTab('dashboard')
         } else {
             flash(`ℹ️ Ningún vehículo coincidió para conversión (${mapCount} reglas)`)
         }
@@ -237,7 +232,6 @@ export default function RuteadorV9() {
         setProyectosData(formatted)
         setProjectsName(file.name)
         flash(`✓ ${formatted.length} proyectos Leslie cargados`)
-        setTab('projects')
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer proyectos') }
@@ -276,7 +270,6 @@ export default function RuteadorV9() {
         }))
 
         flash(`✓ ${upd} orígenes cruzados.`)
-        if (upd > 0) setTab('dashboard')
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer archivo de cruce') }
@@ -342,7 +335,6 @@ export default function RuteadorV9() {
       })
 
       flash(`✓ ${upd} vehículos asignados. ${nf ? `(${nf} sin coincidencia)` : ''}`)
-      if (upd > 0) setTab('dashboard')
     } catch (err) {
       flash('⚠️ Error procesando el cruce de destino.')
     }
@@ -448,7 +440,7 @@ export default function RuteadorV9() {
         }}
       />
 
-      <div className="flex-1 overflow-hidden relative" style={{ background: TC.bg }}>
+      <div className="flex-1 overflow-hidden relative" style={{ background: theme === 'landscape' ? 'transparent' : TC.bg }}>
         <AnimatePresence mode="wait" initial={false}>
           {tab === 'load' && (
             <motion.div key="load" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.02 }} className="absolute inset-0 flex flex-col h-full">

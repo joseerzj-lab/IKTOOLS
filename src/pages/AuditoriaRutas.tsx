@@ -10,7 +10,6 @@ import GlassHeader, { GlassHeaderTab } from '../components/ui/GlassHeader'
 const AUDITORIA_TABS: GlassHeaderTab[] = [
   { id: 'tab-plan',      label: 'Cargar Plan',   icon: '📥', badgeVariant: 'green'  },
   { id: 'tab-vehiculos', label: 'Route Plan',    icon: '📋', badgeVariant: 'blue'   },
-  { id: 'tab-alertas',   label: 'Alertas',       icon: '⚠',  badgeVariant: 'red'    },
   { id: 'tab-mapa',      label: 'Off-Route',     icon: '⚠️', badgeVariant: 'orange' },
   { id: 'tab-geo',       label: 'Wrong Commune', icon: '📍', badgeVariant: 'red'    },
   { id: 'tab-resumen',   label: 'Summary',       icon: '📊', badgeVariant: 'orange' },
@@ -43,7 +42,6 @@ function Toast({ msg, type }: { msg: string; type: 'ok' | 'err' }) {
         border: `1px solid ${type === 'err' ? 'rgba(248,81,73,.35)' : 'rgba(63,185,80,.3)'}`,
         backdropFilter: 'blur(12px)',
         boxShadow: '0 4px 20px rgba(0,0,0,.4)',
-        whiteSpace: 'nowrap',
       }}
     >{msg}</motion.div>
   )
@@ -83,54 +81,46 @@ function buildSummaryRows(
     }
   }
 
-  const allKeys: Record<string, 1> = {}
-  for (const iso of Object.keys(geoMap)) allKeys[iso] = 1
-  for (const iso of Object.keys(fueraMap)) allKeys[iso] = 1
-
+  const allKeys = new Set([...Object.keys(geoMap), ...Object.keys(fueraMap)])
   const rows: SummaryRow[] = []
-  for (const iso of Object.keys(allKeys)) {
+
+  for (const iso of allKeys) {
     const geo   = geoMap[iso]
     const fuera = fueraMap[iso]
-    const both  = !!(geo && fuera)
 
     const geoResolved  = geo   ? resolvedConflicts.has(iso)   : false
     const geoFlagged   = geo   ? flaggedConflicts.has(iso)    : false
     const anomResolved = fuera ? resolvedRisk.has(fuera.aKey) : false
     const anomFlagged  = fuera ? flaggedRisk.has(fuera.aKey)  : false
 
-    const geoStatus   = geoResolved ? 'resuelto' : geoFlagged ? 'alerta' : 'pendiente'
-    const fueraStatus = anomResolved ? 'resuelto' : anomFlagged ? 'alerta' : 'pendiente'
-
-    let status: SummaryRow['status'], tipo: SummaryRow['tipo'], obs: string, detalle: string
-
-    if (both) {
-      status  = (geoStatus === 'resuelto' && fueraStatus === 'resuelto') ? 'resuelto'
-              : (geoStatus === 'alerta'   && fueraStatus === 'alerta')   ? 'alerta' : 'pendiente'
-      tipo    = 'ambos'
-      obs     = 'Fuera de Ruta + CI'
-      detalle = `CI: ${geo.comunaDireccion} → ${geo.comunaReal}  |  FR: ${fuera.detalle}`
-    } else if (geo) {
-      status  = geoStatus as SummaryRow['status']
-      tipo    = 'geo'
-      obs     = 'Comuna Incorrecta'
-      detalle = `${geo.comunaDireccion} → ${geo.comunaReal}`
-    } else {
-      status  = fueraStatus as SummaryRow['status']
-      tipo    = 'fuera'
-      obs     = 'Fuera de Ruta'
-      detalle = fuera!.detalle
+    if (geo) {
+      rows.push({
+        iso, veh: geo.veh, dir: geo.dir,
+        obs: 'Comuna Incorrecta',
+        detalle: `${geo.comunaDireccion} → ${geo.comunaReal}`,
+        tipo: 'geo',
+        status: geoResolved ? 'revisado' : (geoFlagged || true) ? 'alerta' : 'pendiente',
+        geoISO: iso,
+        aKey: null,
+        riskLevel: null,
+      })
     }
 
-    rows.push({
-      iso, veh: (geo || fuera!).veh, dir: geo?.dir ?? fuera?.dir ?? '',
-      obs, detalle, tipo, status,
-      geoISO: geo ? iso : null,
-      aKey: fuera ? fuera.aKey : null,
-      riskLevel: fuera ? fuera.riskLevel : null,
-    })
+    if (fuera) {
+      rows.push({
+        iso, veh: fuera.veh, dir: fuera.dir,
+        obs: 'Fuera de Ruta',
+        detalle: fuera.detalle,
+        tipo: 'fuera',
+        status: anomResolved ? 'revisado' : (anomFlagged || true) ? 'alerta' : 'pendiente',
+        geoISO: null,
+        aKey: fuera.aKey,
+        riskLevel: fuera.riskLevel,
+      })
+    }
   }
 
-  const order: Record<string, number> = { pendiente: 0, alerta: 1, resuelto: 2, aprobado: 2 }
+  const order: Record<string, number> = { alerta: 0, pendiente: 1, revisado: 2, aprobado: 2 }
   rows.sort((a, b) => (order[a.status] || 0) - (order[b.status] || 0))
   return rows
 }
@@ -243,13 +233,26 @@ export default function AuditoriaRutas() {
     [conflicts, riskResults, resolvedConflicts, flaggedConflicts, resolvedRisk, flaggedRisk]
   )
 
-  const badges: Partial<Record<TabId, number>> = useMemo(() => ({
-    'tab-vehiculos': routeData.length || undefined,
-    'tab-alertas':   summaryRows.filter(r => r.tipo === 'ambos' || (r.tipo === 'fuera' && r.riskLevel !== 'low') || r.tipo === 'geo').length || undefined,
-    'tab-mapa':      Object.values(riskResults).flatMap(v => v.results).filter(r => r.riskLevel !== 'low').length || undefined,
-    'tab-geo':       conflicts.filter(c => !resolvedConflicts.has(c.iso)).length || undefined,
-    'tab-resumen':   summaryRows.filter(r => r.status === 'pendiente').length || undefined,
-  }), [routeData, riskResults, conflicts, resolvedConflicts, summaryRows])
+  const badges: Partial<Record<TabId, number>> = useMemo(() => {
+    // Off-Route count: unique ISOs in results with risk >= medium
+    const offRouteISOs = new Set<string>();
+    Object.values(riskResults).forEach(v => {
+      v.results.forEach(r => {
+        if (r.riskLevel === 'high' || r.riskLevel === 'medium') {
+          r.isos?.forEach(isoRow => offRouteISOs.add(isoRow.iso));
+        }
+      });
+    });
+
+    const geoAlertsCount = conflicts.filter(c => !resolvedConflicts.has(c.iso)).length;
+
+    return {
+      'tab-vehiculos': routeData.length || undefined,
+      'tab-mapa':      offRouteISOs.size || undefined,
+      'tab-geo':       geoAlertsCount || undefined,
+      'tab-resumen':   summaryRows.filter(r => r.status !== 'revisado').length || undefined,
+    }
+  }, [routeData, riskResults, conflicts, resolvedConflicts, summaryRows])
 
   const toggleResolveConflict = useCallback((iso: string) => {
     setResolvedConflicts(prev => {
@@ -296,10 +299,35 @@ export default function AuditoriaRutas() {
       setResolvedRisk(s => { const n = new Set(s); resolve ? n.add(aKey) : n.delete(aKey); return n })
       if (resolve) setFlaggedRisk(s => { const n = new Set(s); n.delete(aKey); return n })
     }
-    showToast(resolve ? '✓ Resuelto' : '↩ Reabierto')
+    showToast(resolve ? '✓ Revisado' : '↩ Reabierto')
+  }, [showToast])
+
+  const handleResolveAll = useCallback((isos: string[], aKeys: (string | null)[]) => {
+    setResolvedConflicts(prev => {
+      const next = new Set(prev)
+      isos.forEach(iso => next.add(iso))
+      return next
+    })
+    setFlaggedConflicts(prev => {
+      const next = new Set(prev)
+      isos.forEach(iso => next.delete(iso))
+      return next
+    })
+    setResolvedRisk(prev => {
+      const next = new Set(prev)
+      aKeys.forEach(k => { if (k) next.add(k) })
+      return next
+    })
+    setFlaggedRisk(prev => {
+      const next = new Set(prev)
+      aKeys.forEach(k => { if (k) next.delete(k) })
+      return next
+    })
+    showToast(`✓ ${isos.length} alertas revisadas`)
   }, [showToast])
 
   const handleSummaryFlag = useCallback((iso: string, aKey: string | null, tipo: string, flag: boolean) => {
+    // Sync flags globally if user wants one check to flag all
     if (tipo === 'geo' || tipo === 'ambos') {
       setFlaggedConflicts(s => { const n = new Set(s); flag ? n.add(iso) : n.delete(iso); return n })
       if (flag) setResolvedConflicts(s => { const n = new Set(s); n.delete(iso); return n })
@@ -325,14 +353,13 @@ export default function AuditoriaRutas() {
 
   return (
     <div
-      style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: TC.bg, color: TC.text, fontFamily: '"Inter", system-ui, sans-serif', userSelect: 'none', transition: 'background 0.25s, color 0.25s' }}
+      style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: theme === 'landscape' ? 'transparent' : TC.bg, color: TC.text, fontFamily: '"Inter", system-ui, sans-serif', userSelect: 'none', transition: 'background 0.25s, color 0.25s' }}
       onDragOver={e => { e.preventDefault(); setDragging(true) }}
       onDragLeave={() => setDragging(false)}
       onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
     >
       <GlassHeader 
-        appName="Auditoría Rutas"
-        appDesc="Revisión y auditoría de rutas"
+        appName="AUDITORÍA DE RUTAS"
         icon="🔍"
         tabs={AUDITORIA_TABS}
         activeTab={activeTab} 
@@ -390,6 +417,7 @@ export default function AuditoriaRutas() {
                   flaggedRisk={flaggedRisk}
                   onToggleResolve={toggleResolveRisk}
                   onToggleFlag={toggleFlagRisk}
+                  onResolveAll={handleResolveAll}
                   onOpenRouteMap={veh => { setRouteMapVeh(veh) }}
                   hasData={!!routeData.length}
                   isReady={comunasReady}
@@ -408,6 +436,7 @@ export default function AuditoriaRutas() {
                   onToggleFlagRisk={toggleFlagRisk}
                   onToggleResolveConflict={toggleResolveConflict}
                   onToggleFlagConflict={toggleFlagConflict}
+                  onResolveAll={handleResolveAll}
                   onOpenRouteMap={veh => { setRouteMapVeh(veh) }}
                   hasData={!!routeData.length}
                   isReady={comunasReady}
@@ -460,6 +489,7 @@ export default function AuditoriaRutas() {
             flaggedConflicts={flaggedConflicts}
             onToggleResolve={toggleResolveConflict}
             onToggleFlag={toggleFlagConflict}
+            onResolveAll={handleResolveAll}
             hasData={!!routeData.length}
             isReady={comunasReady}
             onRunAnalysis={handleGeoAnalysis}

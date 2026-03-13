@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { Search, Columns3, Plus, Trash2, Filter, ArrowDownAZ, ArrowUpZA, FileDown, FileSpreadsheet, Image as ImageIcon } from 'lucide-react'
 import { DropdownMenu } from '../ui/dropdown-menu'
-import html2canvas from 'html2canvas'
+import { exportElementAsImage } from '../../utils/exportUtils'
 import type { Row, Stats } from './types'
 import { useTheme, getThemeColors } from '../../context/ThemeContext'
 import { Btn } from '../../ui/DS'
@@ -274,18 +274,10 @@ export default function TabDashboard({
   const exportToImage = async () => {
     const el = document.getElementById('dashboard-table-container')
     if (!el) return
-    onNotify?.('⏳ Generando imagen...')
-    setTimeout(() => onNotify(''), 2500)
-    try {
-      const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 })
-      const link = document.createElement('a')
-      link.download = `Dashboard_Ruteo.png`
-      link.href = canvas.toDataURL('image/png')
-      link.click()
-      onNotify?.('✓ Imagen exportada')
-    } catch (e) {
-      onNotify?.('❌ Error al exportar')
-    }
+    await exportElementAsImage(el, 'Dashboard_Ruteo.png', {
+      backgroundColor: theme === 'light' ? '#f6f8fa' : '#0d1117',
+      onNotify
+    })
   }
 
   const exportTableCSV = () => {
@@ -317,7 +309,6 @@ export default function TabDashboard({
     return counts
   }, [rows, columns])
 
-  const isoColIndex = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
 
   const uniqueValuesForCol = (col: string) => {
     const vals = new Set<string>()
@@ -567,7 +558,9 @@ export default function TabDashboard({
             </thead>
             <tbody>
               {filtered.map((r, ri) => {
-                const isDup = isoCounts[(r[isoColIndex] || '').trim().toLowerCase()] > 1
+                const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
+                const isRetiro = String(r['GESTIÓN'] || '').trim().toUpperCase() === 'RETIRO'
+                const isDup = !isRetiro && isoCounts[(r[isoCol] || '').trim().toLowerCase()] > 1
                 return (
                   <tr key={ri} className={`transition-colors group ${isDup ? 'bg-red-500/10 hover:bg-red-500/20' : ri % 2 === 0 ? 'bg-black/5 dark:bg-white/5 hover:bg-blue-500/10 dark:hover:bg-blue-400/10' : 'hover:bg-blue-500/10 dark:hover:bg-blue-400/10'}`}>
                     <td className="p-1 text-center text-[9px] font-bold border-r relative" style={{ color: isDup ? '#ef4444' : TC.textSub, borderBottom: `1px solid ${isDup ? 'rgba(239,68,68,0.3)' : TC.borderSoft}`, borderColor: isDup ? 'rgba(239,68,68,0.3)' : TC.borderSoft }}>
@@ -600,7 +593,7 @@ export default function TabDashboard({
                             id={`cell-${ri}-${ci}`}
                             type="text"
                             // If multiple selected, disable pointer events on input so drag works smoothly over text
-                            className={`w-full px-2 py-2 text-[11px] font-mono bg-transparent outline-none transition-all placeholder-opacity-20 focus:bg-white/90 dark:focus:bg-black/50 focus:ring-1 focus:ring-inset focus:ring-blue-500 ${isMultipleSelected ? 'pointer-events-none selection:bg-transparent cursor-default text-inherit' : ''}`}
+                            className={`w-full px-2 py-2 text-[11px] font-mono bg-transparent outline-none transition-all placeholder-opacity-20 focus:backdrop-blur-md focus:bg-white/5 dark:focus:bg-white/5 focus:ring-1 focus:ring-inset focus:ring-blue-500 ${isMultipleSelected ? 'pointer-events-none selection:bg-transparent cursor-default text-inherit' : ''}`}
                             style={{ color: TC.text, border: 'none' }}
                             value={r[c] || ''}
                             onChange={e => onUpdateCell(ri, c, e.target.value)}

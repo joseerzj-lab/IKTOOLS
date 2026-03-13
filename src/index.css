@@ -160,10 +160,57 @@ body {
   --ar-scrollbar:    rgba(0,0,0,0.18) transparent;
 }
 
+.crimson {
+  --ar-bg: #0a0000;
+  --ar-bg-card: rgba(26, 0, 0, 0.85);
+  --ar-bg-card-alt: rgba(40, 0, 0, 0.9);
+  --ar-bg-hover: rgba(255, 0, 0, 0.1);
+  --ar-bg-active: rgba(255, 0, 0, 0.2);
+  --ar-bg-surface: rgba(255, 0, 0, 0.05);
+  --ar-bg-header: rgba(15, 0, 0, 0.98);
+  --ar-bg-detail: rgba(30, 0, 0, 0.4);
+
+  --ar-border: rgba(255, 0, 0, 0.3);
+  --ar-border-soft: rgba(255, 0, 0, 0.15);
+  --ar-border-bar: rgba(255, 0, 0, 0.2);
+
+  --ar-text: #ffffff;
+  --ar-text-sub: #ff4d4d;
+  --ar-text-muted: #ff1a1a;
+  --ar-text-faint: rgba(255, 255, 255, 0.7);
+  --ar-text-disabled: rgba(255, 255, 255, 0.4);
+
+  --ar-progress-bg: rgba(255, 0, 0, 0.1);
+  --ar-scrollbar: rgba(255, 0, 0, 0.3) transparent;
+}
+
 /* Apply scrollbar colors based on theme */
 .dark ::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
 .light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.18); }
+
+.crimson {
+    --background: #000000;
+    --foreground: #ffffff;
+    --card: #1a0000;
+    --card-foreground: #ffffff;
+    --popover: #1a0000;
+    --popover-foreground: #ffffff;
+    --primary: #ff0000;
+    --primary-foreground: #ffffff;
+    --secondary: #330000;
+    --secondary-foreground: #ffffff;
+    --muted: #330000;
+    --muted-foreground: rgba(255,255,255,0.7);
+    --accent: #ff0000;
+    --accent-foreground: #ffffff;
+    --destructive: #7f0000;
+    --destructive-foreground: #ffffff;
+    --border: #440000;
+    --input: #440000;
+    --ring: #ff0000;
+    --radius: 0.5rem;
+  }
 
 :root {
   --background: oklch(1 0 0);
@@ -304,3 +351,43 @@ body {
 /* Copy glow */
 .ik-copy-glow { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(.92); background: rgba(63, 185, 80, .12); border: 1px solid #3fb950; color: #3fb950; font-weight: 700; font-size: 13px; padding: 10px 26px; border-radius: 9px; z-index: 99999; pointer-events: none; opacity: 0; transition: opacity .18s, transform .18s; backdrop-filter: blur(8px); box-shadow: 0 0 32px rgba(63, 185, 80, .28); }
 .ik-copy-glow.ik-glow-show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  from { opacity: 0.3; }
+  to { opacity: 0.8; }
+}
+
+@keyframes flowRed {
+  0% { transform: translateY(-100%); opacity: 0; }
+  20% { opacity: 0.4; }
+  80% { opacity: 0.4; }
+  100% { transform: translateY(100vh); opacity: 0; }
+}
+
+.crimson .blood-stream {
+  position: fixed;
+  top: 0;
+  width: 1px;
+  height: 150px;
+  background: linear-gradient(to bottom, transparent, #ff0000, transparent);
+  pointer-events: none;
+  z-index: 2;
+  animation: flowRed 3s infinite linear;
+}
+
+.crimson * {
+  scrollbar-color: var(--ar-scrollbar);
+}
+
+.crimson ::-webkit-scrollbar-thumb {
+  background: rgba(255, 0, 0, 0.3);
+}
+
+.crimson ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 0, 0, 0.5);
+}
+
+/* Keep titles red in crimson theme for character */
+.crimson h1, .crimson h2, .crimson h3, .crimson h4, .crimson h5, .crimson h6,
+.crimson [style*="fontWeight: 700"], .crimson [style*="fontWeight: 800"], .crimson [style*="fontWeight: 900"] {
+  color: #ff0000 !important;
+  text-shadow: 0 0 10px rgba(255,0,0,0.5);
+}

@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
 import Menu from './pages/Menu'
 import AuditoriaRutas from './pages/AuditoriaRutas'
 import Ruteo24h from './pages/Ruteo24h'
@@ -10,9 +11,17 @@ import ReporteRutas from './pages/ReporteRutas'
 import RuteadorV9 from './pages/RuteadorV9'
 import ActualizarOtif from './pages/ActualizarOtif'
 
+import { ThemeBackground } from './components/ui/ThemeBackground'
+
 export default function App() {
+  useEffect(() => {
+    document.title = 'IKTOOLSWH'
+  }, [])
+
   return (
-    <Routes>
+    <>
+      <ThemeBackground />
+      <Routes>
       <Route path="/" element={<Menu />} />
       <Route path="/auditoria" element={<AuditoriaRutas />} />
       <Route path="/ruteo-24hrs" element={<Ruteo24h />} />
@@ -24,5 +33,6 @@ export default function App() {
       <Route path="/ruteador" element={<RuteadorV9 />} />
       <Route path="/otif" element={<ActualizarOtif />} />
     </Routes>
+    </>
   )
 }

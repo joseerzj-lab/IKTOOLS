@@ -27,6 +27,7 @@ interface Props {
   onToggleFlagRisk:        (k: string) => void
   onToggleResolveConflict: (iso: string) => void
   onToggleFlagConflict:    (iso: string) => void
+  onResolveAll: (isos: string[], aKeys: (string | null)[]) => void
 
   hasData: boolean
   isReady: boolean
@@ -34,7 +35,7 @@ interface Props {
   onOpenRouteMap: (veh: string) => void
 }
 
-type StatusFilter = 'all' | 'pendiente' | 'alerta' | 'resuelto'
+type StatusFilter = 'all' | 'pendiente' | 'alerta' | 'revisado'
 
 // A single row that represents an ISO that has EITHER:
 //  - out of route (high/medium risk)
@@ -343,7 +344,7 @@ function AlertRow({
                     if (row.aKey) onToggleResolveRisk(row.aKey)
                     if (row.iso) onToggleResolveConflict(row.iso)
                   }}>
-                    {fullyResolved ? '↩' : '✓ Resolver'}
+                    {fullyResolved ? '↩' : '✓ Revisar'}
                   </Btn>
                   
                   <Btn variant={anyFlagged ? 'danger' : 'ghost'} size="xs"
@@ -642,6 +643,7 @@ export default function TabAlertas({
   routeData, riskResults, conflicts,
   resolvedRisk, flaggedRisk, resolvedConflicts, flaggedConflicts,
   onToggleResolveRisk, onToggleFlagRisk, onToggleResolveConflict, onToggleFlagConflict,
+  onResolveAll,
   hasData, isReady, onRunGeoAnalysis, onOpenRouteMap,
 }: Props) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -677,7 +679,7 @@ export default function TabAlertas({
             : row.tipo === 'fuera' ? riskResolved : geoResolved
         
         const isFlagged = riskFlagged || geoFlagged
-        const status = isResolved ? 'resuelto' : isFlagged ? 'alerta' : 'pendiente'
+        const status = isResolved ? 'revisado' : isFlagged ? 'alerta' : 'pendiente'
         
         if (status !== statusFilter) return false
       }
@@ -780,7 +782,7 @@ export default function TabAlertas({
             { key: 'all',       label: 'Todos' },
             { key: 'pendiente', label: 'Pendiente' },
             { key: 'alerta',    label: '⚠ Alerta' },
-            { key: 'resuelto',  label: '✓ Resuelto' },
+            { key: 'revisado',  label: '✓ Revisado' },
           ]}
         />
 
@@ -788,6 +790,25 @@ export default function TabAlertas({
         <span style={{ marginLeft: 'auto', fontSize: T.xs, color: C.textFaint }}>
           {visibleRows.length} resultado{visibleRows.length !== 1 ? 's' : ''}
         </span>
+
+        {visibleRows.some(r => {
+          const isRes = r.tipo === 'ambos' 
+            ? (resolvedRisk.has(r.aKey!) && resolvedConflicts.has(r.iso))
+            : r.tipo === 'fuera' ? resolvedRisk.has(r.aKey!) : resolvedConflicts.has(r.iso)
+          return !isRes
+        }) && (
+          <Btn variant="success" size="xs" onClick={() => {
+            const toResolve = visibleRows.filter(r => {
+                const isRes = r.tipo === 'ambos' 
+                  ? (resolvedRisk.has(r.aKey!) && resolvedConflicts.has(r.iso))
+                  : r.tipo === 'fuera' ? resolvedRisk.has(r.aKey!) : resolvedConflicts.has(r.iso)
+                return !isRes
+            })
+            onResolveAll(toResolve.map(r => r.iso), toResolve.map(r => r.aKey))
+          }} style={{ marginLeft: 10 }}>
+            ✓ Revisar Todo
+          </Btn>
+        )}
       </div>
 
       {/* ── List ── */}

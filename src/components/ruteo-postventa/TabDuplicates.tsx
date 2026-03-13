@@ -1,7 +1,7 @@
 import React from 'react'
 import { AlertTriangle, CheckCircle, FileDown, FileSpreadsheet, Image as ImageIcon } from 'lucide-react'
 import { DropdownMenu } from '../ui/dropdown-menu'
-import html2canvas from 'html2canvas'
+import { exportElementAsImage } from '../../utils/exportUtils'
 
 interface TabDuplicatesProps {
   pvPlanData: string[];
@@ -23,17 +23,10 @@ const TabDuplicates: React.FC<TabDuplicatesProps> = ({ pvPlanData, dashboardIsos
   const exportToImage = async () => {
     const el = document.getElementById('duplicates-table')
     if (!el) return
-    onNotify?.('⏳ Generando imagen...')
-    try {
-      const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 })
-      const link = document.createElement('a')
-      link.download = `Revision_Duplicados.png`
-      link.href = canvas.toDataURL('image/png')
-      link.click()
-      onNotify?.('✓ Imagen exportada')
-    } catch (e) {
-      onNotify?.('❌ Error al exportar')
-    }
+    await exportElementAsImage(el, 'Revision_Duplicados.png', {
+      backgroundColor: TC.bg || '#ffffff',
+      onNotify
+    })
   }
 
   const exportToCSV = () => {

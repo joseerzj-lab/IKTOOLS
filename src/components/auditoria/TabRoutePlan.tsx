@@ -219,13 +219,13 @@ function CommuneSection({ comuna, isos, pct, rl, isApproved, onResolve, vindex, 
         <div onClick={e => e.stopPropagation()}>
           {isApproved ? (
             <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: R.pill, background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`, fontWeight: 700 }}>
-              ✓ Aprobado
+              ✓ Revisado
             </span>
           ) : isRisky ? (
             <button onClick={onResolve} style={{
               fontSize: 9, padding: '3px 9px', borderRadius: R.pill, cursor: 'pointer', fontWeight: 700,
               background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
-            }}>Aprobar</button>
+            }}>Revisar</button>
           ) : null}
         </div>
       </button>

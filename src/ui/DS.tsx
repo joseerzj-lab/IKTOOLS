@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useTheme } from '../context/ThemeContext'
 import { C, T, R, SP, BTN, BTN_SIZE, cardStyle, pillStyle, inputStyle, accordionBtnStyle, RISK } from './design-system'
 import type { RiskLevel } from './design-system'
 
@@ -319,11 +320,13 @@ export function ISOChip({ iso, highlight }: { iso: string; highlight?: boolean }
 //  PageShell — wrapper for full-height tab content
 // ─────────────────────────────────────────────────────────────
 export function PageShell({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  const { theme } = useTheme()
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
       height: '100%', overflow: 'hidden',
-      background: C.bg, color: C.text,
+      background: theme === 'landscape' ? 'transparent' : C.bg, 
+      color: C.text,
       fontFamily: T.fontFamily,
       ...style,
     }}>

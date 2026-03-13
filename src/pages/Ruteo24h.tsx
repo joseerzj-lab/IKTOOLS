@@ -241,7 +241,6 @@ export default function Ruteo24h() {
     <PageShell>
       <GlassHeader 
         appName="Ruteo 24H Engine"
-        appDesc="Express & 24h"
         icon="🕒"
         tabs={R24_TABS}
         activeTab={activeTab}

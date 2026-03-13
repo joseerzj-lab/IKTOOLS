@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import { useRef } from 'react'
 import { C, T, R } from '../../ui/DS'
 import { useTheme, getThemeColors } from '../../context/ThemeContext'
 import type { ISOGeoTabId } from '../../types/isosgeo'
@@ -35,9 +36,32 @@ const PILL_STYLE = {
 }
 
 export default function IsoGeoHeader({ activeTab, onTabChange, badges }: Props) {
-  const { toggle, isDark } = useTheme()
-  const { theme } = useTheme()
+  const { theme, setTheme, toggle, isDark } = useTheme()
   const TC = getThemeColors(theme)
+
+  const logoClickCount = useRef(0)
+  const logoClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleLogoClick = () => {
+    if (theme === 'landscape') {
+      setTheme('dark')
+      return
+    }
+
+    logoClickCount.current += 1
+    
+    if (logoClickTimer.current) clearTimeout(logoClickTimer.current)
+    
+    logoClickTimer.current = setTimeout(() => {
+      logoClickCount.current = 0
+    }, 500)
+
+    if (logoClickCount.current === 3) {
+      setTheme('landscape')
+      logoClickCount.current = 0
+      if (logoClickTimer.current) clearTimeout(logoClickTimer.current)
+    }
+  }
 
   return (
     <div style={{
@@ -53,51 +77,64 @@ export default function IsoGeoHeader({ activeTab, onTabChange, badges }: Props) 
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '7px 18px 0',
       }}>
-        <div style={{
-          width: 24, height: 24, borderRadius: R.md,
-          background: 'linear-gradient(135deg,#e11d48 0%,#f43f5e 55%,#fb7185 100%)', // Rose gradient
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, flexShrink: 0,
-          boxShadow: '0 2px 8px rgba(225,29,72,0.45)', // Rose shadow
-          color: 'white'
-        }}>
-          📍
-        </div>
+        {theme === 'landscape' ? (
+          <motion.div 
+            onClick={handleLogoClick}
+            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.05 }}
+            style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: 'rgba(255, 255, 255, 0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 15px rgba(255, 255, 255, 0.3)',
+              cursor: 'pointer', flexShrink: 0,
+              border: '1px solid rgba(255, 255, 255, 0.4)',
+              backdropFilter: 'blur(5px)'
+            }}
+          >
+            <span style={{ fontSize: 18 }}>🏔️</span>
+          </motion.div>
+        ) : (
+          <motion.div 
+            onClick={handleLogoClick}
+            whileTap={{ scale: 0.9 }}
+            whileHover={{ scale: 1.05 }}
+            style={{
+              cursor: 'pointer', flexShrink: 0,
+            }}
+          >
+            <img 
+              src={`${import.meta.env.BASE_URL}logo_ikea.png`}
+              alt="IKEA"
+              style={{
+                height: 22, 
+                width: 'auto'
+              }}
+            />
+          </motion.div>
+        )}
 
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, marginLeft: 4 }}>
           <span style={{
-            fontSize: 9, fontWeight: 800,
-            letterSpacing: '0.18em',
-            color: TC.textDisabled,
+            fontSize: 14, fontWeight: 800,
+            color: TC.text,
+            fontFamily: 'Outfit, "Inter", sans-serif',
             textTransform: 'uppercase',
-            fontFamily: T.fontFamily,
-            display: 'block',
-            lineHeight: 1
+            letterSpacing: '-0.02em'
           }}>
-            Geo ISO Tracker
-          </span>
-          <span style={{
-            fontSize: 7, fontWeight: 700,
-            letterSpacing: '0.1em',
-            color: '#fb7185', // Rose 400
-            textTransform: 'uppercase',
-            fontFamily: T.fontFamily,
-             display: 'block',
-             marginTop: 2
-          }}>
-            Unassigned Visits
+            Consultar ISOs Sin Asignacion
           </span>
         </div>
 
         <motion.button
-          onClick={toggle}
+          onClick={() => theme === 'landscape' ? setTheme('dark') : toggle()}
           whileTap={{ scale: 0.88 }}
           whileHover={{ scale: 1.1 }}
-          title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          title={theme === 'landscape' ? 'Salir del modo secreto' : (isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro')}
           style={{
             marginLeft: 'auto',
-            background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
-            border: `1px solid ${TC.border}`,
+            background: theme === 'landscape' ? 'rgba(255,255,255,0.15)' : (isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'),
+            border: `1px solid ${theme === 'landscape' ? 'rgba(255,255,255,0.4)' : TC.border}`,
             borderRadius: R.md,
             width: 26, height: 26,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -105,9 +142,11 @@ export default function IsoGeoHeader({ activeTab, onTabChange, badges }: Props) 
             fontSize: 13,
             flexShrink: 0,
             transition: 'background 0.2s',
+            color: TC.text,
+            boxShadow: theme === 'landscape' ? '0 0 10px rgba(255,255,255,0.2)' : 'none'
           }}
         >
-          {isDark ? '☀️' : '🌙'}
+          {theme === 'landscape' ? '🏔️' : (isDark ? '☀️' : '🌙')}
         </motion.button>
       </div>
 

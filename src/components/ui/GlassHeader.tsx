@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { ReactNode } from 'react'
+import { ReactNode, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { C, T, R } from '../../ui/DS'
@@ -14,7 +14,6 @@ export interface GlassHeaderTab {
 
 export interface GlassHeaderProps {
   appName:      string
-  appDesc:      string
   icon:         ReactNode
   tabs:         GlassHeaderTab[]
   activeTab:    string
@@ -34,16 +33,38 @@ const BADGE: Record<string, { bg: string; color: string }> = {
 
 export default function GlassHeader({ 
   appName, 
-  appDesc, 
-  icon, 
   tabs, 
   activeTab, 
   onTabChange, 
   badges = {}, 
   severities = {} 
 }: GlassHeaderProps) {
-  const { theme, toggle, isDark } = useTheme()
+  const { theme, setTheme, toggle, isDark } = useTheme()
   const TC = getThemeColors(theme)
+  
+  const logoClickCount = useRef(0)
+  const logoClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleLogoClick = () => {
+    if (theme === 'landscape') {
+      setTheme('dark')
+      return
+    }
+
+    logoClickCount.current += 1
+    
+    if (logoClickTimer.current) clearTimeout(logoClickTimer.current)
+    
+    logoClickTimer.current = setTimeout(() => {
+      logoClickCount.current = 0
+    }, 500)
+
+    if (logoClickCount.current === 3) {
+      setTheme('landscape')
+      logoClickCount.current = 0
+      if (logoClickTimer.current) clearTimeout(logoClickTimer.current)
+    }
+  }
 
   // Severity → pill visual
   const SEVERITY_PILL: Record<string, { bg: string; border: string; glow: string }> = {
@@ -74,47 +95,72 @@ export default function GlassHeader({
         </Link>
 
         {/* Logo mark */}
-        <div style={{
-          width: 24, height: 24, borderRadius: R.md,
-          background: 'linear-gradient(135deg,#003A8C 0%,#0051BA 55%,#1a6dd4 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 12, flexShrink: 0,
-          boxShadow: '0 2px 8px rgba(0,81,186,0.45)',
-          color: 'white'
-        }}>
-          {icon}
-        </div>
-
+        <motion.div 
+          onClick={handleLogoClick}
+          whileTap={{ scale: 0.9 }}
+          whileHover={{ scale: 1.05 }}
+          style={{
+            cursor: 'pointer',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            ...(theme === 'landscape'
+              ? {
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: 'rgba(255, 255, 255, 0.2)',
+                  boxShadow: '0 0 15px rgba(255, 255, 255, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.4)',
+                  backdropFilter: 'blur(5px)'
+                }
+              : {
+                  width: 42, height: 26, 
+                  backgroundColor: '#0051BA',
+                  borderRadius: '2px',
+                  padding: '2px',
+                  position: 'relative',
+                  overflow: 'hidden'
+                }
+            )
+          }}
+        >
+          {theme === 'landscape' ? (
+            <span style={{ fontSize: 18 }}>🏔️</span>
+          ) : (
+            <img 
+              src={`${import.meta.env.BASE_URL}logo_ikea.png`}
+              alt="IKEA"
+              style={{
+                height: 20, 
+                width: 'auto',
+                cursor: 'pointer'
+              }}
+            />
+          )}
+        </motion.div>
         {/* App name */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1, marginLeft: 4 }}>
           <span style={{
-            fontSize: 13, fontWeight: 700,
+            fontSize: 14, fontWeight: 800,
             color: TC.text,
-            fontFamily: T.fontFamily,
+            fontFamily: 'Outfit, "Inter", sans-serif',
+            textTransform: 'uppercase',
+            letterSpacing: '-0.02em'
           }}>
             {appName}
-          </span>
-          <span style={{
-            fontSize: 9, fontWeight: 600,
-            letterSpacing: '0.05em',
-            color: TC.textDisabled,
-            textTransform: 'uppercase',
-            fontFamily: T.fontFamily,
-          }}>
-            {appDesc}
           </span>
         </div>
 
         {/* Theme toggle — top right */}
         <motion.button
-          onClick={toggle}
+          onClick={() => theme === 'landscape' ? setTheme('dark') : toggle()}
           whileTap={{ scale: 0.88 }}
           whileHover={{ scale: 1.1 }}
-          title={isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'}
+          title={theme === 'landscape' ? 'Salir del modo secreto' : (isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro')}
           style={{
             marginLeft: 'auto',
-            background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)',
-            border: `1px solid ${TC.border}`,
+            background: theme === 'landscape' ? 'rgba(255,255,255,0.15)' : (isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'),
+            border: `1px solid ${theme === 'landscape' ? 'rgba(255,255,255,0.4)' : TC.border}`,
             borderRadius: R.md,
             width: 26, height: 26,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -122,14 +168,13 @@ export default function GlassHeader({
             fontSize: 13,
             flexShrink: 0,
             transition: 'background 0.2s',
-            color: TC.text
+            color: TC.text,
+            boxShadow: theme === 'landscape' ? '0 0 10px rgba(255,255,255,0.2)' : 'none'
           }}
         >
-          {isDark ? '☀️' : '🌙'}
+          {theme === 'landscape' ? '🏔️' : (isDark ? '☀️' : '🌙')}
         </motion.button>
       </div>
-
-      {/* ── Tab pill nav ── */}
       {tabs && tabs.length > 0 && (
         <div style={{
           display: 'flex', justifyContent: 'center',
@@ -228,6 +273,7 @@ export default function GlassHeader({
           </div>
         </div>
       )}
+      {/* Blood stream animations for secret theme removed */}
     </div>
   )
 }

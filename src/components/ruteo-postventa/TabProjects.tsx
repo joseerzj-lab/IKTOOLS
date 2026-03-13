@@ -1,7 +1,7 @@
 import React from 'react'
 import { FileDown, FileSpreadsheet, Image as ImageIcon } from 'lucide-react'
 import { DropdownMenu } from '../ui/dropdown-menu'
-import html2canvas from 'html2canvas'
+import { exportElementAsImage } from '../../utils/exportUtils'
 
 interface ProjectRow {
   ISO: string;
@@ -36,17 +36,10 @@ const TabProjects: React.FC<TabProjectsProps> = ({ proyectosData, TC, onNotify }
   const exportToImage = async () => {
     const el = document.getElementById('projects-table')
     if (!el) return
-    onNotify?.('⏳ Generando imagen...')
-    try {
-      const canvas = await html2canvas(el, { backgroundColor: '#ffffff', scale: 2 })
-      const link = document.createElement('a')
-      link.download = `Proyectos_Leslie.png`
-      link.href = canvas.toDataURL('image/png')
-      link.click()
-      onNotify?.('✓ Imagen exportada')
-    } catch (e) {
-      onNotify?.('❌ Error al exportar')
-    }
+    await exportElementAsImage(el, 'Proyectos_Leslie.png', {
+      backgroundColor: TC.bg || '#ffffff',
+      onNotify
+    })
   }
 
   const exportToCSV = () => {

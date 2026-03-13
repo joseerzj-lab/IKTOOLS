@@ -158,8 +158,7 @@ export default function VerificadorVehiculos() {
   return (
     <PageShell>
       <GlassHeader 
-        appName="Consultar Entrega de Vehículos"
-        appDesc="SimpliRoute Cross-Check"
+        appName="VERIFICADOR VEHÍCULOS"
         icon="🚛"
         tabs={VERIVEL_TABS}
         activeTab={activeTab}

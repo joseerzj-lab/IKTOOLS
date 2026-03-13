@@ -124,7 +124,6 @@ export default function ISOsFaltantesGeo() {
     <PageShell>
       <GlassHeader 
         appName="Consultar ISOs Sin Asignacion"
-        appDesc="Unassigned Visits & Duplicates"
         icon="📍"
         tabs={GEOTRACK_TABS}
         activeTab={activeTab}

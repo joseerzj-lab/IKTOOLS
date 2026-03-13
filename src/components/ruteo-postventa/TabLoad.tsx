@@ -159,7 +159,10 @@ export default function TabLoad({
     const headersNorm = headersRaw.map(normalizeHeader)
     
     // Buscar la columna de ISO/ASO usando headers normalizados
-    const isoIdx = headersNorm.findIndex(h => h.includes("ASO GENERADA") || h.includes("ASO") || h.includes("ISO"))
+    const isoIdx = headersNorm.findIndex(h => h.includes("ASO GENERADA")) !== -1
+      ? headersNorm.findIndex(h => h.includes("ASO GENERADA"))
+      : headersNorm.findIndex(h => h.includes("ASO") || h.includes("ISO"))
+    
     if (isoIdx === -1) return alert("Falta columna ASO/ISO")
 
     const isosGeneradas: string[] = []
