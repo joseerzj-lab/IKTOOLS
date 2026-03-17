@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef, useDeferredValue, useEffect } from 'react'
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 // ── Components ───────────────────────────────────────────────────────────
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, X, Copy, Maximize2, FileDown, FileSpreadsheet, AlertTriangle, Truck } from 'lucide-react'
@@ -30,7 +30,19 @@ function getKey(row:any,key:string){const k=Object.keys(row).find(k=>k.trim().to
 function termGradient(pct:number){const p=Math.max(0,Math.min(100,pct)); if(p>=100)return{bg:'rgba(34,197,94,.25)',txt:'#22c55e'}; if(p>=90)return{bg:'rgba(234,179,8,.2)',txt:'#eab308'}; return{bg:'rgba(239,68,68,.15)',txt:'#ef4444'}}
 
 type PRData = {
-  regions: Record<string,{orders:Set<string>;estados:Record<string,Set<string>>;patentes:Record<string,{orders:Set<string>;estados:Record<string,Set<string>>;poStates:Record<string,Set<string>>; auditAlerts: {offRoute: number, wrongCommune: number}}>; auditAlerts: {offRoute: number, wrongCommune: number}}>
+  regions: Record<string,{
+    orders:Set<string>;
+    estados:Record<string,Set<string>>;
+    gestiones: Record<string, number>;
+    patentes:Record<string,{
+      orders:Set<string>;
+      estados:Record<string,Set<string>>;
+      gestiones: Record<string, number>;
+      poStates:Record<string,Set<string>>; 
+      auditAlerts: {offRoute: number, wrongCommune: number}
+    }>; 
+    auditAlerts: {offRoute: number, wrongCommune: number}
+  }>
   estados: string[]
   conflictedByPatente: Record<string, { po: string, states: string[], rows: any[] }[]>
   hasConflicts: boolean
@@ -51,7 +63,6 @@ export default function ReporteRutas() {
   
   const [chartLayout, setChartLayout] = useState<'vertical' | 'horizontal'>('vertical')
   const [searchQuery, setSearchQuery] = useState('')
-  const deferredSearchQuery = useDeferredValue(searchQuery)
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false)
 
   // -- Filtering & Sorting
@@ -80,99 +91,158 @@ export default function ReporteRutas() {
   const [selection, setSelection] = useState<{ start: {r: number, c: number} | null, end: {r: number, c: number} | null }>({ start: null, end: null })
   const [isDragging, setIsDragging] = useState(false)
 
-  const handleMouseDown = (r: number, c: number) => {
-    setSelection({ start: {r, c}, end: {r, c} })
-    setIsDragging(true)
-  }
-  
-  const handleMouseEnter = (r: number, c: number) => {
-    if (isDragging) {
-      setSelection(p => ({ ...p, end: {r, c} }))
-    }
-  }
-  
-  const handleMouseUp = () => {
-    setIsDragging(false)
-  }
+  const [chartRegion, setChartRegion] = useState('')
+  const [summaryRegion, setSummaryRegion] = useState('ALL')
 
-  useEffect(() => {
-    const handleKeyDown = async (e: KeyboardEvent) => {
-      if (!isSearchModalOpen || !displayedModalData || !displayedModalData.length) return
-      if (!selection.start || !selection.end || isDragging) return
-
-      const rMin = Math.min(selection.start.r, selection.end.r)
-      const rMax = Math.max(selection.start.r, selection.end.r)
-      const cMin = Math.min(selection.start.c, selection.end.c)
-      const cMax = Math.max(selection.start.c, selection.end.c)
-      const isMultipleSelected = rMin !== rMax || cMin !== cMax
-
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-         if (e.shiftKey) {
-           e.preventDefault()
-           const maxR = displayedModalData.length - 1
-           const maxC = Object.keys(displayedModalData[0]).length - 1
-           let currentR = selection.end.r
-           let currentC = selection.end.c
-           if (e.key === 'ArrowUp') currentR = Math.max(0, currentR - 1)
-           if (e.key === 'ArrowDown') currentR = Math.min(maxR, currentR + 1)
-           if (e.key === 'ArrowLeft') currentC = Math.max(0, currentC - 1)
-           if (e.key === 'ArrowRight') currentC = Math.min(maxC, currentC + 1)
-           setSelection(p => ({ ...p, end: { r: currentR, c: currentC } }))
-           return
-         } else if (isMultipleSelected) {
-           e.preventDefault()
-           const maxR = displayedModalData.length - 1
-           const maxC = Object.keys(displayedModalData[0]).length - 1
-           let currentR = selection.end.r
-           let currentC = selection.end.c
-           if (e.key === 'ArrowUp') currentR = Math.max(0, currentR - 1)
-           if (e.key === 'ArrowDown') currentR = Math.min(maxR, currentR + 1)
-           if (e.key === 'ArrowLeft') currentC = Math.max(0, currentC - 1)
-           if (e.key === 'ArrowRight') currentC = Math.min(maxC, currentC + 1)
-           setSelection({ start: { r: currentR, c: currentC }, end: { r: currentR, c: currentC } })
-           return
-         }
-      }
-
-      // Copy (Ctrl+C)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
-         e.preventDefault()
-         const cols = Object.keys(displayedModalData[0])
-         const textRows = []
-         
-         for (let i = rMin; i <= rMax; i++) {
-             const rowText = []
-             for (let j = cMin; j <= cMax; j++) {
-                 const colName = cols[j]
-                 if (colName && displayedModalData[i]) {
-                     rowText.push(String(displayedModalData[i][colName] || '').replace(/\t/g, ' '))
-                 }
-             }
-             textRows.push(rowText.join('\t'))
-         }
-         
-         navigator.clipboard.writeText(textRows.join('\n'))
-           .then(() => flash(`✓ ${textRows.length} fila(s) copiadas`))
-      }
-    }
-    
-    window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('mouseup', handleMouseUp)
-    return () => {
-        window.removeEventListener('keydown', handleKeyDown)
-        window.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [selection, isDragging, isSearchModalOpen, deferredSearchQuery, rawRows])
-
-  // View States
-  const [chartRegion, setChartRegion] = useState<string>('')
-  const [summaryRegion, setSummaryRegion] = useState<string>('ALL')
-  
-  // Export Refs
   const tableRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const summaryRef = useRef<HTMLDivElement>(null)
 
+  const handleMouseDown = (r: number, c: number) => {
+    setSelection({ start: {r, c}, end: {r, c} })
+    setIsDragging(true)
+  }
+
+  const handleMouseEnter = (r: number, c: number) => {
+    if (isDragging) {
+      setSelection(prev => ({ ...prev, end: {r, c} }))
+    }
+  }
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false)
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('mouseup', handleMouseUp)
+    return () => window.removeEventListener('mouseup', handleMouseUp)
+  }, [handleMouseUp])
+
+  const processCSVData = (rows: any[]) => {
+      const processed:PRData['regions'] = {}; const estadosSet = new Set<string>()
+      const rawRowsByPO: Record<string, any[]> = {}
+      
+      setRawRows(rows)
+
+      rows.forEach(row => {
+        const commerce=(getKey(row,'Commerce')||'').trim()
+        const patente=(getKey(row,'Patente')||'').trim()
+        const region=(getKey(row,'Region')||'Sin Región').trim()
+        const estado=(getKey(row,'Estado')||'Sin Estado').trim()
+        const parentOrder=(getKey(row,'ParentOrder')||'').trim()
+        const gestion=(getKey(row,'Gestión')||getKey(row,'GESTIÓN')||'DIRECTO').trim().toUpperCase()
+
+        if(commerce.toLowerCase()!=='ikea'||!patente) return
+        
+        estadosSet.add(estado)
+        if (!rawRowsByPO[parentOrder]) rawRowsByPO[parentOrder] = []
+        rawRowsByPO[parentOrder].push(row)
+
+        if(!processed[region]) {
+          processed[region]={
+            orders:new Set(),
+            estados:{},
+            gestiones:{},
+            patentes:{}, 
+            auditAlerts: {offRoute:0, wrongCommune:0}
+          }
+        }
+        processed[region].orders.add(parentOrder)
+        if(!processed[region].estados[estado]) processed[region].estados[estado]=new Set()
+        processed[region].estados[estado].add(parentOrder)
+        
+        if(!processed[region].gestiones[gestion]) processed[region].gestiones[gestion] = 0
+        processed[region].gestiones[gestion]++
+
+        const pats = processed[region].patentes
+        if(!pats[patente]) {
+          pats[patente]={
+            orders:new Set(),
+            estados:{},
+            gestiones:{},
+            poStates:{}, 
+            auditAlerts: {offRoute:0, wrongCommune:0}
+          }
+        }
+        pats[patente].orders.add(parentOrder)
+        if(!pats[patente].estados[estado]) pats[patente].estados[estado]=new Set()
+        pats[patente].estados[estado].add(parentOrder)
+        if(!pats[patente].poStates[parentOrder]) pats[patente].poStates[parentOrder]=new Set()
+        pats[patente].poStates[parentOrder].add(estado)
+
+        if(!pats[patente].gestiones[gestion]) pats[patente].gestiones[gestion] = 0
+        pats[patente].gestiones[gestion]++
+      })
+
+      const conflictedByPatente: Record<string, { po: string, states: string[], rows: any[] }[]> = {}
+      let hasConflicts = false
+
+      Object.values(processed).forEach(rData => {
+        Object.entries(rData.patentes).forEach(([patente, pData]) => {
+          const conf = Object.entries(pData.poStates)
+            .filter(([, s]) => s.size > 1)
+            .map(([po, s]) => ({ po, states: Array.from(s), rows: rawRowsByPO[po] || [] }))
+          
+          if (conf.length) {
+            if (!conflictedByPatente[patente]) conflictedByPatente[patente] = []
+            conflictedByPatente[patente].push(...conf)
+            hasConflicts = true
+          }
+        })
+      })
+
+      const auditData: RouteRow[] = rows.map(r => ({
+        iso: (getKey(r, 'ISO') || getKey(r, 'TITULO') || getKey(r, 'ISO/TITULO') || '').toString().trim(),
+        veh: (getKey(r, 'Patente') || '').toString().trim(),
+        dir: (getKey(r, 'Direccion') || getKey(r, 'DIRECCION_ENTREGA') || '').toString().trim(),
+        comuna: (getKey(r, 'Comuna') || getKey(r, 'CITY') || '').toString().trim(),
+        provincia: '',
+        lat: parseFloat(getKey(r, 'Latitud') || getKey(r, 'Y') || 'NaN'),
+        lng: parseFloat(getKey(r, 'Longitud') || getKey(r, 'X') || 'NaN'),
+        parada: parseInt(getKey(r, 'Parada') || '0')
+      })).filter(r => r.iso && r.veh)
+      
+      const hasGeo = auditData.some(r => !isNaN(r.lat!) && !isNaN(r.lng!))
+      const cleanedAuditData = auditData.map(r => ({ ...r, lat: isNaN(r.lat!) ? null : r.lat, lng: isNaN(r.lng!) ? null : r.lng }))
+
+      let auditRisk: Record<string, RiskResult> = {}
+      let auditConflicts: ComunaConflict[] = []
+
+      if (comunasReady) {
+        const adjMap = getAdjMap()
+        auditRisk = runRisk(cleanedAuditData, new Set(), adjMap)
+        if (hasGeo) {
+          auditConflicts = runConflict(cleanedAuditData)
+        }
+      }
+
+      // Map audit metrics back to patentes and regions
+      Object.keys(processed).forEach(reg => {
+        processed[reg].auditAlerts = { offRoute: 0, wrongCommune: 0 }
+        Object.keys(processed[reg].patentes).forEach(pat => {
+          const pData = processed[reg].patentes[pat]
+          const offRouteCount = auditRisk[pat]?.results.filter(r => r.riskLevel === 'high' || r.riskLevel === 'medium').reduce((a, b) => a + b.count, 0) || 0
+          const wrongCommuneCount = auditConflicts.filter(c => c.veh === pat).length
+          pData.auditAlerts = { offRoute: offRouteCount, wrongCommune: wrongCommuneCount }
+          processed[reg].auditAlerts.offRoute += offRouteCount
+          processed[reg].auditAlerts.wrongCommune += wrongCommuneCount
+        })
+      })
+
+      setData({ 
+        regions: processed, 
+        estados: [...estadosSet].sort(),
+        conflictedByPatente,
+        hasConflicts,
+        auditConflicts,
+        auditRisk
+      })
+      setSelectedRegions(new Set(Object.keys(processed)))
+      setActiveTab('reporte')
+      setChartRegion(Object.keys(processed).sort()[0] || '')
+  }
+
+  const flash = useCallback((msg:string)=>{setToast(msg);setTimeout(()=>setToast(''),2500)}, [])
 
   const exportToImage = async (elementRef: React.RefObject<HTMLDivElement|null>, filename: string, mode: 'download' | 'copy' = 'download') => {
     const el = elementRef.current
@@ -254,26 +324,15 @@ export default function ReporteRutas() {
   }
 
   const handleDeleteConflictRow = (rowIndex: number) => {
-    // We get the index from the modal data
     const rowToRemove = conflictModalData[rowIndex]
     if (!rowToRemove) return
 
-    // 1. Remove from RawRows
     const newRawRows = rawRows.filter(r => r !== rowToRemove._refRow)
-    
-    // 2. Remove from modal data
     const newModalData = conflictModalData.filter((_, i) => i !== rowIndex)
     setConflictModalData(newModalData)
-    
-    // 3. Re-process everything so charts/tables update automatically
     processCSVData(newRawRows)
-    
     flash('✓ Fila eliminada')
-    
-    // If no conflicts left for this patent, close modal
-    if (newModalData.length === 0) {
-      setConflictModalOpen(false)
-    }
+    if (newModalData.length === 0) setConflictModalOpen(false)
   }
 
   const exportModalDataCSV = (mdata: any[], cols: string[], filename: string) => {
@@ -322,7 +381,6 @@ export default function ReporteRutas() {
       obj.totalNum = total
       obj.dummy = 0.05
       const val = total > 0 ? (terminados / total) * 100 : 0
-      // Edge case logic: 0% if none finished, 100% if no ACTIVE work remains (Plan/Ruta)
       if (terminados === 0) obj.pctCompletado = 0
       else if (planificados === 0 && enRuta === 0) obj.pctCompletado = 100
       else obj.pctCompletado = Math.round(val)
@@ -330,8 +388,6 @@ export default function ReporteRutas() {
       return obj
     }).sort((a,b) => b.totalNum - a.totalNum).slice(0, 80)
   }, [data, chartRegion])
-
-  const flash = useCallback((msg:string)=>{setToast(msg);setTimeout(()=>setToast(''),2500)},[])
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
@@ -342,112 +398,11 @@ export default function ReporteRutas() {
       const sep = detectSep(lines[0])
       const headers = parseRow(lines[0], sep)
       const rows = lines.slice(1).map(line => { const vals = parseRow(line, sep); const obj:any={}; headers.forEach((h,i)=>obj[h]=vals[i]||''); return obj })
-
       setFileName(file.name)
       processCSVData(rows)
       flash('✓ Reporte procesado')
     }
     reader.readAsText(file, 'UTF-8'); e.target.value=''
-  }
-
-  const processCSVData = (rows: any[]) => {
-      const processed:PRData['regions'] = {}; const estadosSet = new Set<string>()
-      const rawRowsByPO: Record<string, any[]> = {}
-      
-      setRawRows(rows)
-
-      rows.forEach(row => {
-        const commerce=(getKey(row,'Commerce')||'').trim()
-        const patente=(getKey(row,'Patente')||'').trim()
-        const region=(getKey(row,'Region')||'Sin Región').trim()
-        const estado=(getKey(row,'Estado')||'Sin Estado').trim()
-        const parentOrder=(getKey(row,'ParentOrder')||'').trim()
-        if(commerce.toLowerCase()!=='ikea'||!patente) return
-        
-        estadosSet.add(estado)
-        if (!rawRowsByPO[parentOrder]) rawRowsByPO[parentOrder] = []
-        rawRowsByPO[parentOrder].push(row)
-
-        if(!processed[region]) processed[region]={orders:new Set(),estados:{},patentes:{}, auditAlerts: {offRoute:0, wrongCommune:0}}
-        processed[region].orders.add(parentOrder)
-        if(!processed[region].estados[estado]) processed[region].estados[estado]=new Set()
-        processed[region].estados[estado].add(parentOrder)
-        
-        const pats = processed[region].patentes
-        if(!pats[patente]) pats[patente]={orders:new Set(),estados:{},poStates:{}, auditAlerts: {offRoute:0, wrongCommune:0}}
-        pats[patente].orders.add(parentOrder)
-        if(!pats[patente].estados[estado]) pats[patente].estados[estado]=new Set()
-        pats[patente].estados[estado].add(parentOrder)
-        if(!pats[patente].poStates[parentOrder]) pats[patente].poStates[parentOrder]=new Set()
-        pats[patente].poStates[parentOrder].add(estado)
-      })
-
-      const conflictedByPatente: Record<string, { po: string, states: string[], rows: any[] }[]> = {}
-      let hasConflicts = false
-
-      Object.values(processed).forEach(rData => {
-        Object.entries(rData.patentes).forEach(([patente, pData]) => {
-          const conf = Object.entries(pData.poStates)
-            .filter(([, s]) => s.size > 1)
-            .map(([po, s]) => ({ po, states: Array.from(s), rows: rawRowsByPO[po] || [] }))
-          
-          if (conf.length) {
-            if (!conflictedByPatente[patente]) conflictedByPatente[patente] = []
-            conflictedByPatente[patente].push(...conf)
-            hasConflicts = true
-          }
-        })
-      })
-
-      const auditData: RouteRow[] = rows.map(r => ({
-        iso: (getKey(r, 'ISO') || getKey(r, 'TITULO') || getKey(r, 'ISO/TITULO') || '').toString().trim(),
-        veh: (getKey(r, 'Patente') || '').toString().trim(),
-        dir: (getKey(r, 'Direccion') || getKey(r, 'DIRECCION_ENTREGA') || '').toString().trim(),
-        comuna: (getKey(r, 'Comuna') || getKey(r, 'CITY') || '').toString().trim(),
-        provincia: '',
-        lat: parseFloat(getKey(r, 'Latitud') || getKey(r, 'Y') || 'NaN'),
-        lng: parseFloat(getKey(r, 'Longitud') || getKey(r, 'X') || 'NaN'),
-        parada: parseInt(getKey(r, 'Parada') || '0')
-      })).filter(r => r.iso && r.veh)
-
-      const hasGeo = auditData.some(r => !isNaN(r.lat!) && !isNaN(r.lng!))
-      const cleanedAuditData = auditData.map(r => ({ ...r, lat: isNaN(r.lat!) ? null : r.lat, lng: isNaN(r.lng!) ? null : r.lng }))
-
-      let auditRisk: Record<string, RiskResult> = {}
-      let auditConflicts: ComunaConflict[] = []
-
-      if (comunasReady) {
-        const adjMap = getAdjMap()
-        auditRisk = runRisk(cleanedAuditData, new Set(), adjMap)
-        if (hasGeo) {
-          auditConflicts = runConflict(cleanedAuditData)
-        }
-      }
-
-      // Map audit metrics back to patentes and regions
-      Object.keys(processed).forEach(reg => {
-        processed[reg].auditAlerts = { offRoute: 0, wrongCommune: 0 }
-        Object.keys(processed[reg].patentes).forEach(pat => {
-          const pData = processed[reg].patentes[pat]
-          const offRouteCount = auditRisk[pat]?.results.filter(r => r.riskLevel === 'high' || r.riskLevel === 'medium').reduce((a, b) => a + b.count, 0) || 0
-          const wrongCommuneCount = auditConflicts.filter(c => c.veh === pat).length
-          pData.auditAlerts = { offRoute: offRouteCount, wrongCommune: wrongCommuneCount }
-          processed[reg].auditAlerts.offRoute += offRouteCount
-          processed[reg].auditAlerts.wrongCommune += wrongCommuneCount
-        })
-      })
-
-      setData({ 
-        regions: processed, 
-        estados: [...estadosSet].sort(),
-        conflictedByPatente,
-        hasConflicts,
-        auditConflicts,
-        auditRisk
-      })
-      setSelectedRegions(new Set(Object.keys(processed)))
-      setActiveTab('reporte')
-      setChartRegion(Object.keys(processed).sort()[0] || '')
   }
 
   const toggleRegion = (r:string) => setExpanded(p=>{const n=new Set(p); n.has(r)?n.delete(r):n.add(r); return n})
@@ -1108,49 +1063,88 @@ export default function ReporteRutas() {
                           </div>
                         </div>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-                          {(() => {
-                            let totalOrders = 0, totalPatentes = new Set(), terminados = 0
-                            const regionsToProcess = summaryRegion === 'ALL' ? allRegions : [summaryRegion]
-                            
-                            regionsToProcess.forEach(r => {
-                               const rd = data.regions[r]; if(!rd) return
-                               totalOrders += rd.orders.size
-                               Object.keys(rd.patentes).forEach(p => totalPatentes.add(p))
-                               
-                               Object.keys(rd.estados).forEach(e => {
-                                 if (e.toLowerCase().includes('terminado')) {
-                                   terminados += rd.estados[e].size
-                                 }
-                               })
-                            })
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                          <div className="grid grid-cols-2 gap-4">
+                            {(() => {
+                              let totalOrders = 0, totalPatentes = new Set(), terminados = 0
+                              const regionsToProcess = summaryRegion === 'ALL' ? allRegions : [summaryRegion]
+                              
+                              regionsToProcess.forEach(r => {
+                                 const rd = data.regions[r]; if(!rd) return
+                                 totalOrders += rd.orders.size
+                                 Object.keys(rd.patentes).forEach(p => totalPatentes.add(p))
+                                 
+                                 Object.keys(rd.estados).forEach(e => {
+                                   if (e.toLowerCase().includes('terminado')) {
+                                     terminados += rd.estados[e].size
+                                   }
+                                 })
+                              })
 
-                            const pctTerminado = totalOrders > 0 ? Math.round((terminados / totalOrders) * 100) : 0
+                              const pctTerminado = totalOrders > 0 ? Math.round((terminados / totalOrders) * 100) : 0
 
-                            return (
-                              <>
-                                <div className="p-4 rounded-xl flex flex-col items-center justify-center border backdrop-blur-md" style={{ borderColor: TC.borderSoft, background: 'rgba(56,189,248,0.05)' }}>
-                                  <div className="text-3xl font-black" style={{ color: '#0ea5e9' }}>{totalOrders}</div>
-                                  <div className="text-[10px] uppercase tracking-widest opacity-50 mt-1 font-bold">Total Órdenes</div>
-                                </div>
-                                <div className="p-4 rounded-xl flex flex-col items-center justify-center border backdrop-blur-md" style={{ borderColor: TC.borderSoft, background: 'rgba(168,85,247,0.05)' }}>
-                                  <div className="text-3xl font-black" style={{ color: '#a855f7' }}>{totalPatentes.size}</div>
-                                  <div className="text-[10px] uppercase tracking-widest opacity-50 mt-1 font-bold">Vehículos Activos</div>
-                                </div>
-                                <div className="p-4 rounded-xl flex flex-col items-center justify-center border backdrop-blur-md" style={{ borderColor: TC.borderSoft, background: 'rgba(234,179,8,0.05)' }}>
-                                  <div className="text-3xl font-black" style={{ color: '#eab308' }}>{totalPatentes.size ? (totalOrders / totalPatentes.size).toFixed(1) : 0}</div>
-                                  <div className="text-[10px] uppercase tracking-widest opacity-50 mt-1 font-bold">Promedio / Vehículo</div>
-                                </div>
-                                <div className="p-4 rounded-xl flex flex-col items-center justify-center border backdrop-blur-md" style={{ borderColor: TC.borderSoft, background: 'rgba(34,197,94,0.05)' }}>
-                                  <div className="text-3xl font-black" style={{ color: '#22c55e' }}>{pctTerminado}%</div>
-                                  <div className="text-[10px] uppercase tracking-widest opacity-50 mt-1 font-bold">Órdenes Terminadas</div>
-                                  <div className="w-full h-1.5 bg-black/5 dark:bg-white/5 rounded-full mt-2 overflow-hidden">
-                                     <div className="h-full bg-green-500 rounded-full transition-all duration-1000" style={{ width: `${pctTerminado}%` }} />
+                              return (
+                                <>
+                                  <div className="p-4 rounded-xl flex flex-col items-center justify-center border backdrop-blur-md" style={{ borderColor: TC.borderSoft, background: 'rgba(56,189,248,0.05)' }}>
+                                    <div className="text-3xl font-black" style={{ color: '#0ea5e9' }}>{totalOrders}</div>
+                                    <div className="text-[10px] uppercase tracking-widest opacity-50 mt-1 font-bold">Total Órdenes</div>
                                   </div>
-                                </div>
-                              </>
-                            )
-                          })()}
+                                  <div className="p-4 rounded-xl flex flex-col items-center justify-center border backdrop-blur-md" style={{ borderColor: TC.borderSoft, background: 'rgba(168,85,247,0.05)' }}>
+                                    <div className="text-3xl font-black" style={{ color: '#a855f7' }}>{totalPatentes.size}</div>
+                                    <div className="text-[10px] uppercase tracking-widest opacity-50 mt-1 font-bold">Vehículos Activos</div>
+                                  </div>
+                                  <div className="p-4 rounded-xl flex flex-col items-center justify-center border backdrop-blur-md" style={{ borderColor: TC.borderSoft, background: 'rgba(234,179,8,0.05)' }}>
+                                    <div className="text-3xl font-black" style={{ color: '#eab308' }}>{totalPatentes.size ? (totalOrders / totalPatentes.size).toFixed(1) : 0}</div>
+                                    <div className="text-[10px] uppercase tracking-widest opacity-50 mt-1 font-bold">Promedio / Vehículo</div>
+                                  </div>
+                                  <div className="p-4 rounded-xl flex flex-col items-center justify-center border backdrop-blur-md" style={{ borderColor: TC.borderSoft, background: 'rgba(34,197,94,0.05)' }}>
+                                    <div className="text-3xl font-black" style={{ color: '#22c55e' }}>{pctTerminado}%</div>
+                                    <div className="text-[10px] uppercase tracking-widest opacity-50 mt-1 font-bold">Órdenes Terminadas</div>
+                                    <div className="w-full h-1.5 bg-black/5 dark:bg-white/5 rounded-full mt-2 overflow-hidden">
+                                       <div className="h-full bg-green-500 rounded-full transition-all duration-1000" style={{ width: `${pctTerminado}%` }} />
+                                    </div>
+                                  </div>
+                                </>
+                              )
+                            })()}
+                          </div>
+
+                          {/* Distribución por Gestión */}
+                          <div className="p-6 rounded-xl border flex flex-col gap-4" style={{ borderColor: TC.borderSoft, background: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)' }}>
+                            <div className="text-xs font-black uppercase tracking-widest opacity-50 mb-2">Distribución por Gestión</div>
+                            <div className="space-y-3">
+                              {(() => {
+                                const gMap: Record<string, number> = {}
+                                const regionsToProcess = summaryRegion === 'ALL' ? allRegions : [summaryRegion]
+                                regionsToProcess.forEach(r => {
+                                  const rd = data.regions[r]; if(!rd) return
+                                  Object.entries(rd.gestiones).forEach(([g, v]) => {
+                                    gMap[g] = (gMap[g] || 0) + v
+                                  })
+                                })
+                                const total = Object.values(gMap).reduce((a, b) => a + b, 0)
+                                return Object.entries(gMap).sort((a, b) => b[1] - a[1]).map(([g, v]) => {
+                                  const p = total > 0 ? Math.round((v / total) * 100) : 0
+                                  let color = '#3b82f6'; // Default blue
+                                  if (g.includes('RECOMIENZO') || g.includes('REPITE')) color = '#f97316'; // Orange
+                                  if (g.includes('RETIRO')) color = '#8b5cf6'; // Purple
+                                  if (g.includes('EYR')) color = '#ec4899'; // Pink
+
+                                  return (
+                                    <div key={g} className="flex flex-col gap-1">
+                                      <div className="flex justify-between text-[10px] font-bold">
+                                        <span style={{ color: TC.text }}>{g}</span>
+                                        <span style={{ color: TC.textMuted }}>{v} ({p}%)</span>
+                                      </div>
+                                      <div className="w-full h-1.5 bg-black/5 dark:bg-white/5 rounded-full overflow-hidden">
+                                        <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${p}%`, background: color }} />
+                                      </div>
+                                    </div>
+                                  )
+                                })
+                              })()}
+                            </div>
+                          </div>
                         </div>
 
                         <div className="rounded-xl border overflow-hidden backdrop-blur-md" style={{ borderColor: TC.borderSoft, background: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.2)' }}>

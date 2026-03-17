@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef } from 'react'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import type { RouteRow, RiskResult } from '../../types/auditoria'
 import { normK } from '../../lib/geoUtils'
-import { C, T, R } from '../../ui/DS'
+import { C, T, R, Btn } from '../../ui/DS'
 
 interface Props {
   routeData:     RouteRow[]
@@ -10,6 +11,8 @@ interface Props {
   resolvedRisk:  Set<string>
   onResolveRisk: (aKey: string, resolve: boolean) => void
   onOpenRouteMap:(veh: string) => void
+  excludedVehicles: Set<string>
+  onToggleExclude: (veh: string) => void
 }
 
 // ── Liquid Glass style tokens ────────────────────────────────
@@ -219,13 +222,13 @@ function CommuneSection({ comuna, isos, pct, rl, isApproved, onResolve, vindex, 
         <div onClick={e => e.stopPropagation()}>
           {isApproved ? (
             <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: R.pill, background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`, fontWeight: 700 }}>
-              ✓ Revisado
+              ✓ Resuelto
             </span>
           ) : isRisky ? (
             <button onClick={onResolve} style={{
               fontSize: 9, padding: '3px 9px', borderRadius: R.pill, cursor: 'pointer', fontWeight: 700,
               background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
-            }}>Revisar</button>
+            }}>Resuelto</button>
           ) : null}
         </div>
       </button>
@@ -262,7 +265,7 @@ function CommuneSection({ comuna, isos, pct, rl, isApproved, onResolve, vindex, 
 }
 
 // ── Vehicle card ──────────────────────────────────────────────
-function VehicleCard({ veh, comunas, riskResult, resolvedRisk, onResolveRisk, onOpenRouteMap, hasGeo, index }: {
+function VehicleCard({ veh, comunas, riskResult, resolvedRisk, onResolveRisk, onOpenRouteMap, hasGeo, index, isExcluded, onToggleExclude, isExpanded, onToggleExpand }: {
   veh: string
   comunas: Record<string, RouteRow[]>
   riskResult: RiskResult | undefined
@@ -271,8 +274,11 @@ function VehicleCard({ veh, comunas, riskResult, resolvedRisk, onResolveRisk, on
   onOpenRouteMap: (veh: string) => void
   hasGeo: boolean
   index: number
+  isExcluded: boolean
+  onToggleExclude: (veh: string) => void
+  isExpanded: boolean
+  onToggleExpand: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const totalIsos = Object.values(comunas).reduce((s, a) => s + a.length, 0)
   const soloUna   = Object.values(comunas).filter(a => a.length === 1).length
   const hasAlert  = riskResult?.results.some(r => r.riskLevel === 'high')  ?? false
@@ -298,14 +304,17 @@ function VehicleCard({ veh, comunas, riskResult, resolvedRisk, onResolveRisk, on
         WebkitBackdropFilter: 'blur(40px) saturate(120%)',
         boxShadow: `0 8px 32px ${glowColor}, inset 1px 1px 0 rgba(255,255,255,0.1)`,
         overflow: 'hidden',
+        opacity: isExcluded ? 0.45 : 1,
+        filter: isExcluded ? 'grayscale(0.6)' : 'none',
+        transition: 'all 0.3s'
       }}
     >
       {/* Vehicle header button */}
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={onToggleExpand}
         style={{
           width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
-          background: open ? 'rgba(255,255,255,0.04)' : 'transparent',
+          background: isExpanded ? 'rgba(255,255,255,0.04)' : 'transparent',
           padding: '13px 16px',
           display: 'flex', alignItems: 'center', gap: 10,
           transition: 'background 0.15s',
@@ -313,7 +322,7 @@ function VehicleCard({ veh, comunas, riskResult, resolvedRisk, onResolveRisk, on
       >
         {/* Chevron */}
         <motion.span
-          animate={{ rotate: open ? 90 : 0 }}
+          animate={{ rotate: isExpanded ? 90 : 0 }}
           transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
           style={{ fontSize: 10, color: C.textFaint, flexShrink: 0, display: 'inline-block' }}
         >▶</motion.span>
@@ -368,12 +377,24 @@ function VehicleCard({ veh, comunas, riskResult, resolvedRisk, onResolveRisk, on
               }}
             >🗺 Ver mapa</button>
           )}
+          <button
+            onClick={e => { e.stopPropagation(); onToggleExclude(veh) }}
+            style={{
+              fontSize: 9, padding: '3px 9px', borderRadius: R.pill, cursor: 'pointer', fontWeight: 700,
+              background: isExcluded ? 'rgba(255,255,255,0.15)' : 'rgba(248,81,73,0.1)',
+              color: isExcluded ? '#fff' : C.red,
+              border: `1px solid ${isExcluded ? 'rgba(255,255,255,0.2)' : 'rgba(248,81,73,0.2)'}`,
+              transition: 'all 0.15s'
+            }}
+          >
+            {isExcluded ? 'Incluir' : 'Excluir'}
+          </button>
         </div>
       </button>
 
       {/* Communes */}
       <AnimatePresence initial={false}>
-        {open && (
+        {isExpanded && (
           <motion.div
             key="communes"
             initial={{ height: 0, opacity: 0 }}
@@ -415,11 +436,23 @@ function VehicleCard({ veh, comunas, riskResult, resolvedRisk, onResolveRisk, on
 }
 
 // ── Main component ────────────────────────────────────────────
-export default function TabRoutePlan({ routeData, riskResults, resolvedRisk, onResolveRisk, onOpenRouteMap }: Props) {
+export default function TabRoutePlan({ routeData, riskResults, resolvedRisk, onResolveRisk, onOpenRouteMap, excludedVehicles, onToggleExclude }: Props) {
   const [search, setSearch] = useState('')
+  const [expandedVehicles, setExpandedVehicles] = useState<Set<string>>(new Set())
   const scrollRef = useRef<HTMLDivElement>(null)
   const { scrollYProgress } = useScroll({ container: scrollRef })
   const scrollShadow  = useTransform(scrollYProgress, [0, 0.05], ['rgba(0,0,0,0)', 'rgba(0,0,0,0.6)'])
+
+  const toggleExpand = (veh: string) => {
+    setExpandedVehicles(prev => {
+      const next = new Set(prev)
+      if (next.has(veh)) next.delete(veh); else next.add(veh)
+      return next
+    })
+  }
+
+  const expandAll = () => setExpandedVehicles(new Set(entries.map(e => e[0])))
+  const collapseAll = () => setExpandedVehicles(new Set())
 
   const vehMap = useMemo(() => {
     const m: Record<string, Record<string, RouteRow[]>> = {}
@@ -442,6 +475,14 @@ export default function TabRoutePlan({ routeData, riskResults, resolvedRisk, onR
       .sort((a, b) => a[0].localeCompare(b[0], 'es'))
       .filter(([v]) => !search || v.toLowerCase().includes(search.toLowerCase())),
     [vehMap, search])
+
+  const virtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 100, // Reduced base estimate for better stability
+    overscan: 10,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  })
 
   if (!routeData.length) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 14, background: C.bg }}>
@@ -476,6 +517,11 @@ export default function TabRoutePlan({ routeData, riskResults, resolvedRisk, onR
             <span style={{ fontSize: 9, color: C.textFaint, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{s.label}</span>
           </motion.div>
         ))}
+
+        <div style={{ display: 'flex', gap: 6 }}>
+           <Btn variant="secondary" size="xs" onClick={expandAll}>Expandir Todo</Btn>
+           <Btn variant="secondary" size="xs" onClick={collapseAll}>Colapsar Todo</Btn>
+        </div>
 
         {/* Search */}
         <div style={{ marginLeft: 'auto' }}>
@@ -529,20 +575,40 @@ export default function TabRoutePlan({ routeData, riskResults, resolvedRisk, onR
           scrollbarColor: 'rgba(255,255,255,0.18) transparent',
         }}
       >
-        {entries.map(([veh, comunas], i) => (
-          <div key={veh} style={{ marginBottom: 8 }}>
-            <VehicleCard
-              veh={veh}
-              comunas={comunas}
-              riskResult={riskResults[veh]}
-              resolvedRisk={resolvedRisk}
-              onResolveRisk={onResolveRisk}
-              onOpenRouteMap={onOpenRouteMap}
-              hasGeo={routeData.some(r => r.veh === veh && r.lat !== null)}
-              index={i}
-            />
-          </div>
-        ))}
+        <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const [veh, comunas] = entries[virtualRow.index]
+            return (
+                <div 
+                  ref={virtualizer.measureElement}
+                  data-index={virtualRow.index}
+                  style={{ 
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                    paddingBottom: 16 // More spacing
+                  }}
+                >
+                  <VehicleCard
+                    veh={veh}
+                    comunas={comunas}
+                    riskResult={riskResults[veh]}
+                    resolvedRisk={resolvedRisk}
+                    onResolveRisk={onResolveRisk}
+                    onOpenRouteMap={onOpenRouteMap}
+                    hasGeo={routeData.some(r => r.veh === veh && r.lat !== null)}
+                    index={virtualRow.index}
+                    isExcluded={excludedVehicles.has(veh)}
+                    onToggleExclude={onToggleExclude}
+                    isExpanded={expandedVehicles.has(veh)}
+                    onToggleExpand={() => toggleExpand(veh)}
+                  />
+                </div>
+            )
+          })}
+        </div>
         {entries.length === 0 && search && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
             style={{ textAlign: 'center', color: C.textFaint, padding: '40px 0', fontSize: T.md }}>

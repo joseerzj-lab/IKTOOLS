@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { RiskResult, RouteRow } from '../../types/auditoria'
-import { C, T, R, Btn, Badge } from '../../ui/DS'
+import { C, T, R, Btn } from '../../ui/DS'
 
 interface Props {
   routeData:      RouteRow[]
@@ -11,9 +11,12 @@ interface Props {
   onToggleResolve:(aKey: string) => void
   onToggleFlag:   (aKey: string) => void
   onResolveAll:   (isos: string[], aKeys: (string | null)[]) => void
+  onFlagAll:      (isos: string[], aKeys: (string | null)[]) => void
   onOpenRouteMap: (veh: string) => void
   hasData:  boolean
   isReady:  boolean
+  onRunAnalysis:   () => void
+  excludedVehicles: Set<string>
 }
 
 // ── Liquid glass helpers ──────────────────────────────────────
@@ -130,7 +133,7 @@ function ISORow({
               background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
               backdropFilter: 'blur(8px)',
             }}
-          >{isResolved ? '↩' : '✓ Revisar'}</motion.button>
+          >{isResolved ? '↩' : '✓ Resuelto'}</motion.button>
 
           <motion.button whileTap={{ scale: 0.9 }}
             onClick={onFlag}
@@ -141,7 +144,7 @@ function ISORow({
               border: `1px solid ${isFlagged ? C.redBorder : 'rgba(248,81,73,0.2)'}`,
               backdropFilter: 'blur(8px)',
             }}
-          >{isFlagged ? '✕' : '⚠'}</motion.button>
+          >{isFlagged ? '✕' : 'Alerta'}</motion.button>
         </div>
       )}
     </motion.div>
@@ -242,13 +245,13 @@ function CommuneAccordion({
             <motion.button whileTap={{ scale: 0.9 }}
               onClick={() => onToggleResolve(communeKey)}
               style={{ fontSize: 9, padding: '3px 9px', borderRadius: R.pill, cursor: 'pointer', fontWeight: 700, background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}` }}
-            >{isCommuneResolved ? '↩' : '✓ Todo Revisado'}</motion.button>
+            >{isCommuneResolved ? '↩' : '✓ Todo Resuelto'}</motion.button>
             <motion.button whileTap={{ scale: 0.9 }}
               onClick={() => onToggleFlag(communeKey)}
               style={{ fontSize: 9, padding: '3px 9px', borderRadius: R.pill, cursor: 'pointer', fontWeight: 700,
                 background: isCommuneFlagged ? 'rgba(248,81,73,0.2)' : 'rgba(248,81,73,0.08)',
                 color: C.red, border: `1px solid ${isCommuneFlagged ? C.redBorder : 'rgba(248,81,73,0.2)'}` }}
-            >{isCommuneFlagged ? '✕' : '⚠'}</motion.button>
+            >{isCommuneFlagged ? '✕' : 'Alerta Todo'}</motion.button>
           </div>
         )}
       </button>
@@ -422,8 +425,7 @@ function VehicleSection({
 
 // ── Main ─────────────────────────────────────────────────────
 export default function TabOffRoute({
-  routeData, riskResults, resolvedRisk, flaggedRisk,
-  onToggleResolve, onToggleFlag, onResolveAll, onOpenRouteMap, hasData, isReady,
+  routeData, riskResults, resolvedRisk, flaggedRisk, onToggleResolve, onToggleFlag, onResolveAll, onFlagAll, onOpenRouteMap, hasData, isReady, onRunAnalysis, excludedVehicles,
 }: Props) {
   const [search, setSearch] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -435,8 +437,10 @@ export default function TabOffRoute({
   }, [routeData])
 
   const sortedVehs = useMemo(() =>
-    Object.entries(riskResults).sort((a, b) => b[1].maxRisk - a[1].maxRisk),
-    [riskResults])
+    Object.entries(riskResults)
+      .filter(([v]) => !excludedVehicles.has(v))
+      .sort((a, b) => b[1].maxRisk - a[1].maxRisk),
+    [riskResults, excludedVehicles])
 
   const allResults = useMemo(() => sortedVehs.flatMap(([, v]) => v.results), [sortedVehs])
   const nHigh = allResults.filter(r => r.riskLevel === 'high').length
@@ -484,11 +488,17 @@ export default function TabOffRoute({
           </motion.div>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'center' }}>
-          <Btn variant="success" size="sm" onClick={() => {
-            const isos = sortedVehs.flatMap(([, v]) => v.results.flatMap(r => r.isos?.map(i => i.iso) ?? []))
-            const aKeys = sortedVehs.flatMap(([, v]) => v.results.map(r => `${v.veh}|${r.key}`))
+          <Btn variant="blue" size="xs" onClick={onRunAnalysis} disabled={!isReady || !hasData}>Re-Analizar</Btn>
+          <Btn variant="success" size="xs" onClick={() => {
+            const isos = sortedVehs.flatMap(([, v]) => v.results.filter(r => r.riskLevel !== 'low').flatMap(r => r.isos?.map(i => i.iso) ?? []))
+            const aKeys = sortedVehs.flatMap(([veh, v]) => v.results.filter(r => r.riskLevel !== 'low').map(r => `${veh}|${r.key}`))
             onResolveAll(isos, aKeys)
-          }}>Revisar todo</Btn>
+          }} disabled={!hasData}>Resolver Todo</Btn>
+          <Btn variant="danger" size="xs" onClick={() => {
+            const isos = sortedVehs.flatMap(([, v]) => v.results.filter(r => r.riskLevel !== 'low').flatMap(r => r.isos?.map(i => i.iso) ?? []))
+            const aKeys = sortedVehs.flatMap(([veh, v]) => v.results.filter(r => r.riskLevel !== 'low').map(r => `${veh}|${r.key}`))
+            onFlagAll(isos, aKeys)
+          }} disabled={!hasData}>Alerta Todo</Btn>
           <input
             value={search}
             onChange={e => setSearch(e.target.value)}

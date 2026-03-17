@@ -19,7 +19,12 @@ export default function TabExport({ rows, stats, onExportJSON }: Props) {
   
   const handleExportXLSX = () => {
     if (!rows.length) return
-    const ws = XLSX.utils.json_to_sheet(rows)
+    const sortedRows = [...rows].sort((a, b) => {
+      const valA = String(a.DESTINO || '').toUpperCase()
+      const valB = String(b.DESTINO || '').toUpperCase()
+      return valA.localeCompare(valB)
+    })
+    const ws = XLSX.utils.json_to_sheet(sortedRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Sheet1')
     XLSX.writeFile(wb, `Ruteo_Postventa_${new Date().toISOString().split('T')[0]}.xlsx`)
@@ -82,8 +87,13 @@ export default function TabExport({ rows, stats, onExportJSON }: Props) {
   const handleCopyTable = () => {
     if (!rows.length) return
     const cols = Object.keys(rows[0] || {}).filter(k => k !== '_SOURCE' && k !== 'Commerce' && !k.startsWith('_'))
-    const html = buildHTMLTable(rows, cols)
-    const plain = rows.map(r => cols.map(c => r[c] || '').join('\t')).join('\n')
+    const sortedRows = [...rows].sort((a, b) => {
+      const valA = String(a.DESTINO || '').toUpperCase()
+      const valB = String(b.DESTINO || '').toUpperCase()
+      return valA.localeCompare(valB)
+    })
+    const html = buildHTMLTable(sortedRows, cols)
+    const plain = sortedRows.map(r => cols.map(c => r[c] || '').join('\t')).join('\n')
     copyAsHTML(html, plain, 'table')
   }
 

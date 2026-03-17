@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { compress, decompress } from 'lz-string'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { TabId, RouteRow, ComunaConflict, RiskResult, SummaryRow } from '../types/auditoria'
 import { useFileParser } from '../hooks/useFileParser'
@@ -29,21 +30,20 @@ import { useTheme, getThemeColors } from '../context/ThemeContext'
 function Toast({ msg, type }: { msg: string; type: 'ok' | 'err' }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 16 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+      initial={{ opacity: 0, y: 16, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 16, scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[99999] px-6 py-2.5 rounded-2xl flex items-center gap-2 border shadow-2xl backdrop-blur-xl"
       style={{
-        position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-        zIndex: 99999, padding: '8px 18px', borderRadius: 20,
-        fontSize: 12, fontWeight: 700,
-        background: type === 'err' ? 'rgba(248,81,73,.15)' : 'rgba(63,185,80,.12)',
-        color: type === 'err' ? '#ff7b72' : '#3fb950',
-        border: `1px solid ${type === 'err' ? 'rgba(248,81,73,.35)' : 'rgba(63,185,80,.3)'}`,
-        backdropFilter: 'blur(12px)',
-        boxShadow: '0 4px 20px rgba(0,0,0,.4)',
+        background: type === 'err' ? 'rgba(239,68,68,0.15)' : 'rgba(34,197,94,0.15)',
+        color: type === 'err' ? '#f87171' : '#4ade80',
+        borderColor: type === 'err' ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)',
       }}
-    >{msg}</motion.div>
+    >
+      <span className="text-lg">{type === 'ok' ? '✓' : '⚠️'}</span>
+      <span className="text-xs font-bold uppercase tracking-wider">{msg}</span>
+    </motion.div>
   )
 }
 
@@ -56,73 +56,69 @@ function buildSummaryRows(
   resolvedRisk: Set<string>,
   flaggedRisk: Set<string>,
 ): SummaryRow[] {
-  const geoMap: Record<string, ComunaConflict> = {}
-  for (const c of conflicts) geoMap[c.iso] = c
+  const isoMap = new Map<string, SummaryRow>()
 
-  const fueraMap: Record<string, {
-    iso: string; veh: string; dir: string; detalle: string
-    aKey: string; riskLevel: 'low' | 'medium' | 'high'; _riskScore: number
-  }> = {}
+  // 1. Process Conflicts (Geo)
+  for (const c of conflicts) {
+    const isRes = resolvedConflicts.has(c.iso)
+    const isFlg = flaggedConflicts.has(c.iso)
+    isoMap.set(c.iso, {
+      iso: c.iso, veh: c.veh, dir: c.dir,
+      obs: 'Comuna Incorrecta',
+      detalle: `${c.comunaDireccion} → ${c.comunaReal}`,
+      tipo: 'geo',
+      status: isRes ? 'resuelto' : isFlg ? 'alerta' : 'pendiente',
+      geoISO: c.iso,
+      aKey: null,
+      riskLevel: null,
+    })
+  }
 
+  // 2. Process Risk (Off-Route) and Merge
   for (const [veh, vdata] of Object.entries(riskResults)) {
     for (const r of vdata.results) {
-      if (r.riskLevel !== 'high' && r.riskLevel !== 'medium') continue
+      if (r.riskLevel === 'low') continue
       const aKey = `${veh}|${r.key}`
+      const isResRisk = resolvedRisk.has(aKey)
+      const isFlgRisk = flaggedRisk.has(aKey)
+      
       for (const isoRow of (r.isos ?? [])) {
-        if (!fueraMap[isoRow.iso] || r.riskScore > (fueraMap[isoRow.iso]._riskScore || 0)) {
-          fueraMap[isoRow.iso] = {
+        const existing = isoMap.get(isoRow.iso)
+        if (existing) {
+          // Merge
+          existing.tipo = 'ambos'
+          existing.obs  = 'FR + CI'
+          existing.detalle = `${existing.detalle} | FR: ${r.comuna}`
+          existing.aKey = aKey
+          existing.riskLevel = r.riskLevel
+          
+          // Logic: if it was resuelto for Geo but pending for Risk, it's pending overall
+          const isGeoRes = resolvedConflicts.has(isoRow.iso)
+          const isGeoFlg = flaggedConflicts.has(isoRow.iso)
+          
+          if (isGeoFlg || isFlgRisk) existing.status = 'alerta'
+          else if (isGeoRes && isResRisk) existing.status = 'resuelto'
+          else existing.status = 'pendiente'
+        } else {
+          isoMap.set(isoRow.iso, {
             iso: isoRow.iso, veh,
             dir: isoRow.dir || '',
-            detalle: `${r.comuna} · ${Math.round(r.riskScore * 100)}% riesgo${r.riskLevel === 'medium' ? ' (moderado)' : ''}`,
-            aKey, riskLevel: r.riskLevel, _riskScore: r.riskScore,
-          }
+            obs: 'Fuera de Ruta',
+            detalle: `${r.comuna} · ${Math.round(r.riskScore * 100)}% riesgo`,
+            tipo: 'fuera',
+            status: isResRisk ? 'resuelto' : isFlgRisk ? 'alerta' : 'pendiente',
+            geoISO: null,
+            aKey,
+            riskLevel: r.riskLevel,
+          })
         }
       }
     }
   }
 
-  const allKeys = new Set([...Object.keys(geoMap), ...Object.keys(fueraMap)])
-  const rows: SummaryRow[] = []
-
-  for (const iso of allKeys) {
-    const geo   = geoMap[iso]
-    const fuera = fueraMap[iso]
-
-    const geoResolved  = geo   ? resolvedConflicts.has(iso)   : false
-    const geoFlagged   = geo   ? flaggedConflicts.has(iso)    : false
-    const anomResolved = fuera ? resolvedRisk.has(fuera.aKey) : false
-    const anomFlagged  = fuera ? flaggedRisk.has(fuera.aKey)  : false
-
-    if (geo) {
-      rows.push({
-        iso, veh: geo.veh, dir: geo.dir,
-        obs: 'Comuna Incorrecta',
-        detalle: `${geo.comunaDireccion} → ${geo.comunaReal}`,
-        tipo: 'geo',
-        status: geoResolved ? 'revisado' : (geoFlagged || true) ? 'alerta' : 'pendiente',
-        geoISO: iso,
-        aKey: null,
-        riskLevel: null,
-      })
-    }
-
-    if (fuera) {
-      rows.push({
-        iso, veh: fuera.veh, dir: fuera.dir,
-        obs: 'Fuera de Ruta',
-        detalle: fuera.detalle,
-        tipo: 'fuera',
-        status: anomResolved ? 'revisado' : (anomFlagged || true) ? 'alerta' : 'pendiente',
-        geoISO: null,
-        aKey: fuera.aKey,
-        riskLevel: fuera.riskLevel,
-      })
-    }
-  }
-
-  const order: Record<string, number> = { alerta: 0, pendiente: 1, revisado: 2, aprobado: 2 }
-  rows.sort((a, b) => (order[a.status] || 0) - (order[b.status] || 0))
-  return rows
+  const rows = Array.from(isoMap.values())
+  const order: Record<string, number> = { alerta: 0, pendiente: 1, resuelto: 2 }
+  return rows.sort((a, b) => (order[a.status] || 0) - (order[b.status] || 0))
 }
 
 // ── useToast ──────────────────────────────────────────────────────
@@ -143,18 +139,67 @@ export default function AuditoriaRutas() {
   const TC = getThemeColors(theme)
 
   const [activeTab, setActiveTab]     = useState<TabId>('tab-plan')
-  const [routeData, setRouteData]     = useState<RouteRow[]>([])
+  const [routeData, setRouteData]     = useState<RouteRow[]>(() => {
+    try {
+      const saved = localStorage.getItem('aud-route-v2')
+      if (saved) return JSON.parse(decompress(saved) || '[]')
+      const old = localStorage.getItem('aud-route')
+      return old ? JSON.parse(old) : []
+    } catch { return [] }
+  })
   const [conflicts, setConflicts]     = useState<ComunaConflict[]>([])
   const [riskResults, setRiskResults] = useState<Record<string, RiskResult>>({})
   const [routeMapVeh, setRouteMapVeh] = useState<string | null>(null)
   const [dragging, setDragging]       = useState(false)
 
-  const [resolvedConflicts, setResolvedConflicts] = useState<Set<string>>(new Set())
-  const [flaggedConflicts,  setFlaggedConflicts]  = useState<Set<string>>(new Set())
-  const [resolvedRisk,      setResolvedRisk]      = useState<Set<string>>(new Set())
-  const [flaggedRisk,       setFlaggedRisk]       = useState<Set<string>>(new Set())
+  const [resolvedConflicts, setResolvedConflicts] = useState<Set<string>>(() => {
+    try {
+      const s = localStorage.getItem('aud-res-conf-v2')
+      return s ? new Set(JSON.parse(s)) : new Set()
+    } catch { return new Set() }
+  })
+  const [flaggedConflicts,  setFlaggedConflicts]  = useState<Set<string>>(() => {
+    try {
+      const s = localStorage.getItem('aud-flg-conf-v2')
+      return s ? new Set(JSON.parse(s)) : new Set()
+    } catch { return new Set() }
+  })
+  const [resolvedRisk,      setResolvedRisk]      = useState<Set<string>>(() => {
+    try {
+      const s = localStorage.getItem('aud-res-risk-v2')
+      return s ? new Set(JSON.parse(s)) : new Set()
+    } catch { return new Set() }
+  })
+  const [flaggedRisk,       setFlaggedRisk]       = useState<Set<string>>(() => {
+    try {
+      const s = localStorage.getItem('aud-flg-risk-v2')
+      return s ? new Set(JSON.parse(s)) : new Set()
+    } catch { return new Set() }
+  })
+  const [excludedVehicles, setExcludedVehicles] = useState<Set<string>>(() => {
+    try {
+      const s = localStorage.getItem('aud-excl-veh-v2')
+      return s ? new Set(JSON.parse(s)) : new Set()
+    } catch { return new Set() }
+  })
 
   const { toast, showToast } = useToast()
+
+  // ── Persistence ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (routeData.length > 0) {
+      localStorage.setItem('aud-route-v2', compress(JSON.stringify(routeData)))
+      localStorage.removeItem('aud-route')
+    } else {
+      localStorage.removeItem('aud-route-v2')
+    }
+  }, [routeData])
+
+  useEffect(() => { localStorage.setItem('aud-res-conf-v2', JSON.stringify([...resolvedConflicts])) }, [resolvedConflicts])
+  useEffect(() => { localStorage.setItem('aud-flg-conf-v2', JSON.stringify([...flaggedConflicts])) }, [flaggedConflicts])
+  useEffect(() => { localStorage.setItem('aud-res-risk-v2', JSON.stringify([...resolvedRisk])) }, [resolvedRisk])
+  useEffect(() => { localStorage.setItem('aud-flg-risk-v2', JSON.stringify([...flaggedRisk])) }, [flaggedRisk])
+  useEffect(() => { localStorage.setItem('aud-excl-veh-v2', JSON.stringify([...excludedVehicles])) }, [excludedVehicles])
 
   const { parseFile, loading: parsing } = useFileParser()
   const { runAnalysis: runRisk }        = useRiskAnalysis()
@@ -181,12 +226,12 @@ export default function AuditoriaRutas() {
       offRouteSev === 'medium' || communeSev === 'medium' ? 'medium' : 'none'
 
     return {
-      'tab-alertas': summarySev, // Alertas usa la severidad combinada
+      'tab-alertas': summarySev,
       'tab-mapa':    offRouteSev,
       'tab-geo':     communeSev,
       'tab-resumen': summarySev,
     } satisfies Partial<Record<typeof activeTab, 'high' | 'medium' | 'none'>>
-  }, [riskResults, conflicts, resolvedConflicts, flaggedConflicts])
+  }, [riskResults, conflicts, resolvedConflicts, flaggedConflicts, excludedVehicles])
 
   const handleFile = useCallback(async (file: File) => {
     const result = await parseFile(file)
@@ -195,10 +240,9 @@ export default function AuditoriaRutas() {
     setRouteData(result.rows)
     setConflicts([])
     setRiskResults({})
-    setResolvedConflicts(new Set())
-    setFlaggedConflicts(new Set())
     setResolvedRisk(new Set())
     setFlaggedRisk(new Set())
+    setExcludedVehicles(new Set())
     showToast(`✓ ${result.rows.length} ISOs cargadas${result.hasGeo ? ' · con GPS' : ''}`)
 
     // Switch to Route Plan tab after loading
@@ -228,10 +272,10 @@ export default function AuditoriaRutas() {
     showToast(confR.length ? `${confR.length} conflictos detectados` : '✓ Sin conflictos de comuna')
   }, [routeData, comunasReady, runConflict, showToast])
 
-  const summaryRows = useMemo(() =>
-    buildSummaryRows(conflicts, riskResults, resolvedConflicts, flaggedConflicts, resolvedRisk, flaggedRisk),
-    [conflicts, riskResults, resolvedConflicts, flaggedConflicts, resolvedRisk, flaggedRisk]
-  )
+  const summaryRows = useMemo(() => {
+    const allRows = buildSummaryRows(conflicts, riskResults, resolvedConflicts, flaggedConflicts, resolvedRisk, flaggedRisk)
+    return allRows.filter(r => !excludedVehicles.has(r.veh))
+  }, [conflicts, riskResults, resolvedConflicts, flaggedConflicts, resolvedRisk, flaggedRisk, excludedVehicles])
 
   const badges: Partial<Record<TabId, number>> = useMemo(() => {
     // Off-Route count: unique ISOs in results with risk >= medium
@@ -244,15 +288,15 @@ export default function AuditoriaRutas() {
       });
     });
 
-    const geoAlertsCount = conflicts.filter(c => !resolvedConflicts.has(c.iso)).length;
+    const geoAlertsCount = conflicts.filter(c => !excludedVehicles.has(c.veh) && !resolvedConflicts.has(c.iso)).length;
 
     return {
       'tab-vehiculos': routeData.length || undefined,
       'tab-mapa':      offRouteISOs.size || undefined,
       'tab-geo':       geoAlertsCount || undefined,
-      'tab-resumen':   summaryRows.filter(r => r.status !== 'revisado').length || undefined,
+      'tab-resumen':   summaryRows.filter(r => r.status !== 'resuelto').length || undefined,
     }
-  }, [routeData, riskResults, conflicts, resolvedConflicts, summaryRows])
+  }, [routeData, riskResults, conflicts, resolvedConflicts, summaryRows, excludedVehicles])
 
   const toggleResolveConflict = useCallback((iso: string) => {
     setResolvedConflicts(prev => {
@@ -291,15 +335,20 @@ export default function AuditoriaRutas() {
   }, [])
 
   const handleSummaryResolve = useCallback((iso: string, aKey: string | null, tipo: string, resolve: boolean) => {
+    // If resolve=true, clear ALL flags for this ISO
+    if (resolve) {
+      setFlaggedConflicts(s => { const n = new Set(s); n.delete(iso); return n })
+      if (aKey) setFlaggedRisk(s => { const n = new Set(s); n.delete(aKey); return n })
+    }
+
+    // Update Resolved sets
     if (tipo === 'geo' || tipo === 'ambos') {
       setResolvedConflicts(s => { const n = new Set(s); resolve ? n.add(iso) : n.delete(iso); return n })
-      if (resolve) setFlaggedConflicts(s => { const n = new Set(s); n.delete(iso); return n })
     }
     if ((tipo === 'fuera' || tipo === 'ambos') && aKey) {
       setResolvedRisk(s => { const n = new Set(s); resolve ? n.add(aKey) : n.delete(aKey); return n })
-      if (resolve) setFlaggedRisk(s => { const n = new Set(s); n.delete(aKey); return n })
     }
-    showToast(resolve ? '✓ Revisado' : '↩ Reabierto')
+    showToast(resolve ? '✓ Resuelto' : '↩ Reabierto')
   }, [showToast])
 
   const handleResolveAll = useCallback((isos: string[], aKeys: (string | null)[]) => {
@@ -323,18 +372,46 @@ export default function AuditoriaRutas() {
       aKeys.forEach(k => { if (k) next.delete(k) })
       return next
     })
-    showToast(`✓ ${isos.length} alertas revisadas`)
+    showToast(`✓ ${isos.length} alertas resueltas`)
+  }, [showToast])
+
+  const handleFlagAll = useCallback((isos: string[], aKeys: (string | null)[]) => {
+    setFlaggedConflicts(prev => {
+      const next = new Set(prev)
+      isos.forEach(iso => next.add(iso))
+      return next
+    })
+    setResolvedConflicts(prev => {
+      const next = new Set(prev)
+      isos.forEach(iso => next.delete(iso))
+      return next
+    })
+    setFlaggedRisk(prev => {
+      const next = new Set(prev)
+      aKeys.forEach(k => { if (k) next.add(k) })
+      return next
+    })
+    setResolvedRisk(prev => {
+      const next = new Set(prev)
+      aKeys.forEach(k => { if (k) next.delete(k) })
+      return next
+    })
+    showToast(`⚠ ${isos.length} alertas marcadas`)
   }, [showToast])
 
   const handleSummaryFlag = useCallback((iso: string, aKey: string | null, tipo: string, flag: boolean) => {
-    // Sync flags globally if user wants one check to flag all
+    // If flag=true, clear ALL resolutions for this ISO
+    if (flag) {
+      setResolvedConflicts(s => { const n = new Set(s); n.delete(iso); return n })
+      if (aKey) setResolvedRisk(s => { const n = new Set(s); n.delete(aKey); return n })
+    }
+
+    // Update Flagged sets
     if (tipo === 'geo' || tipo === 'ambos') {
       setFlaggedConflicts(s => { const n = new Set(s); flag ? n.add(iso) : n.delete(iso); return n })
-      if (flag) setResolvedConflicts(s => { const n = new Set(s); n.delete(iso); return n })
     }
     if ((tipo === 'fuera' || tipo === 'ambos') && aKey) {
       setFlaggedRisk(s => { const n = new Set(s); flag ? n.add(aKey) : n.delete(aKey); return n })
-      if (flag) setResolvedRisk(s => { const n = new Set(s); n.delete(aKey); return n })
     }
     showToast(flag ? '⚠ Alerta marcada' : '✕ Alerta removida')
   }, [showToast])
@@ -407,6 +484,16 @@ export default function AuditoriaRutas() {
                     showToast(resolve ? '✓ Aprobado' : '↩ Reabierto')
                   }}
                   onOpenRouteMap={veh => { setRouteMapVeh(veh) }}
+                  excludedVehicles={excludedVehicles}
+                  onToggleExclude={veh => {
+                    setExcludedVehicles(prev => {
+                      const n = new Set(prev)
+                      if (n.has(veh)) n.delete(veh)
+                      else n.add(veh)
+                      return n
+                    })
+                    showToast(excludedVehicles.has(veh) ? `✓ ${veh} incluido` : `✕ ${veh} excluido`)
+                  }}
                 />
               )}
               {activeTab === 'tab-mapa' && (
@@ -418,9 +505,12 @@ export default function AuditoriaRutas() {
                   onToggleResolve={toggleResolveRisk}
                   onToggleFlag={toggleFlagRisk}
                   onResolveAll={handleResolveAll}
+                  onFlagAll={handleFlagAll}
                   onOpenRouteMap={veh => { setRouteMapVeh(veh) }}
                   hasData={!!routeData.length}
                   isReady={comunasReady}
+                  onRunAnalysis={handleGeoAnalysis}
+                  excludedVehicles={excludedVehicles}
                 />
               )}
               {activeTab === 'tab-alertas' && (
@@ -490,9 +580,11 @@ export default function AuditoriaRutas() {
             onToggleResolve={toggleResolveConflict}
             onToggleFlag={toggleFlagConflict}
             onResolveAll={handleResolveAll}
+            onFlagAll={handleFlagAll}
             hasData={!!routeData.length}
             isReady={comunasReady}
             onRunAnalysis={handleGeoAnalysis}
+            excludedVehicles={excludedVehicles}
             isVisible={activeTab === 'tab-geo'}
           />
         </div>

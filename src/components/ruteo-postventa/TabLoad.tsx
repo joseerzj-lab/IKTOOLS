@@ -1,31 +1,7 @@
 import { useState } from 'react'
 import type { Row } from './types'
 import { Card, Btn } from '../../ui/DS'
-
-
-function detectSep(line: string) {
-  const s = (line.match(/;/g) || []).length
-  const c = (line.match(/,/g) || []).length
-  const t = (line.match(/\t/g) || []).length
-  if (t > s && t > c) return '\t'
-  return s > c ? ';' : ','
-}
-
-const normalizeHeader = (h: string) => 
-  h.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
-
-function parseRow(line: string, sep: string) {
-  const r: string[] = []
-  let cur = '', inQ = false
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i]
-    if (ch === '"') inQ = !inQ
-    else if (ch === sep && !inQ) { r.push(cur.trim().replace(/^"|"$/g, '')); cur = '' }
-    else cur += ch
-  }
-  r.push(cur.trim().replace(/^"|"$/g, ''))
-  return r
-}
+import { parseDelimitedText, getRowAsObject, LOGISTICS_COLUMN_MAP } from '../../utils/parsing'
 
 interface Props {
   rows: Row[]
@@ -69,27 +45,38 @@ export default function TabLoad({
 
   const procesarRepites = () => {
     if (!pasteRepites.trim()) return
-    const lines = pasteRepites.split(/\r?\n/).filter(l => l.trim())
-    if (lines.length < 2) return
-    const sep = detectSep(lines[0])
-    const headers = parseRow(lines[0], sep).map(normalizeHeader)
+    const { headers, rows: pRows } = parseDelimitedText(pasteRepites)
+    if (!pRows.length) return
     
-    const data = lines.slice(1).map(line => {
-      const vals = parseRow(line, sep)
-      const r: any = {}
-      headers.forEach((h, i) => {
-        const val = vals[i] || ""
-        r[h] = val.trim().toUpperCase().replace(/\bNAN\b/g, "")
-      })
+    // Check if first row is headers or data
+    const firstRowObj = getRowAsObject(headers, pRows[0])
+    const hasHeaders = LOGISTICS_COLUMN_MAP.iso.some(alias => firstRowObj[alias])
+    
+    let finalRows = pRows
+    let finalHeaders = headers
+    
+    if (!hasHeaders) {
+      // Assume standard format: ISO, VEH, ORIGIN, COMMENT
+      finalHeaders = ['ISO', 'VEH', 'ORIGIN', 'COMENTARIO_RAW']
+      finalRows = [headers, ...pRows] // Include the "header" line as data
+    }
+
+    const data = finalRows.map(row => {
+      const r = getRowAsObject(finalHeaders, row)
       
-      const iso = r['ISO'] || ""
+      const findVal = (aliases: string[]) => {
+        const key = aliases.find(a => r[a] !== undefined)
+        return key ? String(r[key]).trim() : ""
+      }
+
+      const iso = findVal(LOGISTICS_COLUMN_MAP.iso)
       if (!iso) return null
       
-      const com = (r['COMENTARIO'] || r['COMENTARIOS'] || "").toUpperCase()
-      const veh = (r['VEH'] || r['VEHICULO'] || "").toUpperCase()
-      const ori = r['ORIGEN'] || ""
-      let g = "REPITE"
+      const com = findVal(LOGISTICS_COLUMN_MAP.comentario).toUpperCase()
+      const veh = findVal(LOGISTICS_COLUMN_MAP.vehiculo).toUpperCase()
+      const ori = findVal(LOGISTICS_COLUMN_MAP.direccion) || findVal(LOGISTICS_COLUMN_MAP.comuna)
       
+      let g = "REPITE"
       if (veh) {
         const eyr = (com.includes("ENVIO") && com.includes("RETIRO")) || com.includes("ENVIO Y RETIRO")
         const legacySolo = com.includes("SOLO ENVIO") || com.includes("SOLO ENVÍO")
@@ -109,30 +96,26 @@ export default function TabLoad({
         DESTINO: '',
         VEH: veh,
         'CORREO REPITES': 'SI',
-        COMENTARIO: com,
+        COMENTARIO_RAW: com,
         _SOURCE: 'Repites'
       }
     }).filter(Boolean) as Row[]
     
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO'], data, 'Repites')
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Repites')
     setPasteRepites('')
   }
 
   const procesarRetiros = () => {
     if (!pasteRetiros.trim()) return
-    const lines = pasteRetiros.split(/\r?\n/).filter(l => l.trim())
-    if (lines.length < 2) return
-    const sep = detectSep(lines[0])
-    const headers = parseRow(lines[0], sep).map(normalizeHeader)
-    const isoIdx = headers.findIndex(h => h.includes("ISO"))
-    if (isoIdx === -1) return alert("Falta columna ISO")
+    const { headers, rows: pRows } = parseDelimitedText(pasteRetiros)
+    if (!pRows.length) return
     
     const seen = new Set()
     const data: Row[] = []
     
-    lines.slice(1).forEach(line => {
-      const vals = parseRow(line, sep)
-      const iso = vals[isoIdx]?.trim().toUpperCase()
+    pRows.forEach(row => {
+      const r = getRowAsObject(headers, row)
+      const iso = (r['iso'] || r['unidad'] || r['id'] || '').trim().toUpperCase()
       if (!iso || seen.has(iso)) return
       seen.add(iso)
       data.push({
@@ -142,35 +125,26 @@ export default function TabLoad({
         DESTINO: '',
         VEH: '',
         'CORREO REPITES': '',
-        COMENTARIO: '',
+        COMENTARIO_RAW: '',
         _SOURCE: 'Retiros'
       })
     })
     
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO'], data, 'Retiros')
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Retiros')
     setPasteRetiros('')
   }
+
   const procesarEyRPaso1 = () => {
     if (!pasteEyR.trim()) return
-    const lines = pasteEyR.split(/\r?\n/).filter(l => l.trim())
-    if (lines.length < 2) return
-    const sep = detectSep(lines[0])
-    const headersRaw = parseRow(lines[0], sep)
-    const headersNorm = headersRaw.map(normalizeHeader)
+    const { headers, rows: pRows } = parseDelimitedText(pasteEyR)
+    if (!pRows.length) return
     
-    // Buscar la columna de ISO/ASO usando headers normalizados
-    const isoIdx = headersNorm.findIndex(h => h.includes("ASO GENERADA")) !== -1
-      ? headersNorm.findIndex(h => h.includes("ASO GENERADA"))
-      : headersNorm.findIndex(h => h.includes("ASO") || h.includes("ISO"))
-    
-    if (isoIdx === -1) return alert("Falta columna ASO/ISO")
-
     const isosGeneradas: string[] = []
     const newRows: Row[] = []
     
-    lines.slice(1).forEach(line => {
-      const vals = parseRow(line, sep)
-      const isoVal = vals[isoIdx]?.trim().toUpperCase()
+    pRows.forEach(row => {
+      const r = getRowAsObject(headers, row)
+      const isoVal = (r['aso generada'] || r['aso'] || r['iso'] || '').trim().toUpperCase()
       if (isoVal) {
         newRows.push({
           ISO: isoVal,
@@ -179,7 +153,7 @@ export default function TabLoad({
           DESTINO: '',
           VEH: '',
           'CORREO REPITES': '',
-          COMENTARIO: '',
+          COMENTARIO_RAW: '',
           _SOURCE: 'EyR_Paso1'
         })
         isosGeneradas.push(isoVal)
@@ -187,7 +161,7 @@ export default function TabLoad({
     })
     
     if (newRows.length) {
-      onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO'], newRows, 'EyR Paso 1')
+      onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], newRows, 'EyR Paso 1')
       setEyRAsos(isosGeneradas.join(','))
       setPasteEyR('')
     }
@@ -203,10 +177,10 @@ export default function TabLoad({
       DESTINO: '',
       VEH: '',
       'CORREO REPITES': '',
-      COMENTARIO: 'K8',
+      COMENTARIO_RAW: 'K8',
       _SOURCE: 'K8'
     } as Row))
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO'], data, 'K8')
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'K8')
     setPasteK8('')
   }
 

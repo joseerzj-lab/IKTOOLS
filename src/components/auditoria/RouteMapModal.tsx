@@ -38,6 +38,7 @@ export default function RouteMapModal({ veh, routeData, riskResults, conflicts, 
       }
       .pulse-error { animation: pulse-error 2.5s infinite; }
       .pulse-warn { animation: pulse-warn 2.5s infinite; }
+      .commune-label-modal { background: rgba(0,0,0,0.8); border: none; color: #fff; font-weight: 800; font-size: 9px; padding: 2px 6px; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.6); pointer-events: none; }
     `
     document.head.appendChild(style)
 
@@ -112,8 +113,8 @@ export default function RouteMapModal({ veh, routeData, riskResults, conflicts, 
         iconSize: [sz, sz], iconAnchor: [sz/2, sz/2]
       })
 
-      const riskHtml = rl !== 'low' ? `<div style="margin-top:5px;font-size:10px;color:${rl === 'high' ? '#e04040' : '#f0883e'};font-weight:700">${rl === 'high' ? '⚠ Alerta alta' : '· Moderada'} — ${risk.pct}%</div>` : ''
-      const confHtml = conf ? `<div style="margin-top:6px;padding:5px 8px;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:4px;font-size:10px;color:#ff7b72;">⚠ Conflicto geo: dice <strong>${conf.comunaDireccion}</strong> → <strong>${conf.comunaReal}</strong></div>` : ''
+      const riskHtml = rl !== 'low' ? `<div style="margin-top:5px;font-size:10px;color:${rl === 'high' ? '#e04040' : '#f0883e'};font-weight:700">${rl === 'high' ? 'Alerta' : '· Moderada'} — ${risk.pct}%</div>` : ''
+      const confHtml = conf ? `<div style="margin-top:6px;padding:5px 8px;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.3);border-radius:4px;font-size:10px;color:#ff7b72;">Alerta geo: dice <strong>${conf.comunaDireccion}</strong> → <strong>${conf.comunaReal}</strong></div>` : ''
 
       const popupHtml = `<div style="min-width:180px;font-family:system-ui;font-size:12px;background:rgb(22,27,34);color:#e6edf3;border-radius:8px;padding:10px 12px;">
         <div style="font-weight:700;margin-bottom:3px">${r.iso} <span style="font-size:10px;color:#8b949e">#${stopNum}</span></div>
@@ -124,6 +125,12 @@ export default function RouteMapModal({ veh, routeData, riskResults, conflicts, 
       </div>`
 
       const mk = L.marker([r.lat, r.lng], { icon, zIndexOffset: isRed ? 200 : rl === 'medium' ? 100 : 0 })
+      
+      // Add commune name as permanent label if it's a conflict or high risk
+      if (isRed) {
+        mk.bindTooltip(conf ? conf.comunaReal : r.comuna, { permanent: true, direction: 'top', offset: [0, -10], className: 'commune-label-modal' })
+      }
+
       mk.bindPopup(popupHtml, { maxWidth: 300, className: '' })
       mk.addTo(map)
     })

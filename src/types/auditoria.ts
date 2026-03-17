@@ -21,7 +21,7 @@ export interface ComunaConflict {
   comunaDireccion: string   // comuna extraída de la dirección
   comunaReal: string        // comuna detectada por coordenadas
   comunaRealKey: string     // normK key de comunaReal
-  status: 'pendiente' | 'alerta' | 'revisado'
+  status: 'pendiente' | 'alerta' | 'resuelto'
   _id: string
 }
 
@@ -61,7 +61,7 @@ export interface SummaryRow {
   obs: string
   detalle: string
   tipo: 'geo' | 'fuera' | 'ambos'
-  status: 'pendiente' | 'alerta' | 'revisado' | 'aprobado'
+  status: 'pendiente' | 'alerta' | 'resuelto' | 'aprobado'
   geoISO: string | null
   aKey: string | null
   riskLevel: 'low' | 'medium' | 'high' | null

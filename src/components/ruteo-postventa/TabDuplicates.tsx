@@ -81,22 +81,32 @@ const TabDuplicates: React.FC<TabDuplicatesProps> = ({ pvPlanData, dashboardIsos
               const matches = dashboardIsos[iso] || [];
               const isDup = matches.length > 0;
               
-              return (
-                <tr key={`${iso}-${idx}`} className={isDup ? "bg-red-500/5" : ""} style={{ borderBottom: `1px solid ${TC.borderSoft}` }}>
-                  <td className="p-2 text-[11px] font-mono" style={{ color: TC.text }}>{iso}</td>
-                  <td className="p-2 text-center">
-                    {isDup ? (
+              if (isDup) {
+                return matches.map((m, mIdx) => (
+                  <tr key={`${iso}-${idx}-${mIdx}`} className="bg-red-500/5" style={{ borderBottom: `1px solid ${TC.borderSoft}` }}>
+                    <td className="p-2 text-[11px] font-mono" style={{ color: TC.text }}>{mIdx === 0 ? iso : ''}</td>
+                    <td className="p-2 text-center">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-500/20 text-red-400 text-[9px] font-bold border border-red-500/30">
                         <AlertTriangle size={10} /> DUPLICADA
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-500/20 text-green-400 text-[9px] font-bold border border-green-500/30">
-                        <CheckCircle size={10} /> OK
-                      </span>
-                    )}
+                    </td>
+                    <td className="p-2 text-[11px]" style={{ color: "#ff7b72" }}>
+                      {m.GESTIÓN || '—'}
+                    </td>
+                  </tr>
+                ))
+              }
+
+              return (
+                <tr key={`${iso}-${idx}`} style={{ borderBottom: `1px solid ${TC.borderSoft}` }}>
+                  <td className="p-2 text-[11px] font-mono" style={{ color: TC.text }}>{iso}</td>
+                  <td className="p-2 text-center">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-green-500/20 text-green-400 text-[9px] font-bold border border-green-500/30">
+                      <CheckCircle size={10} /> OK
+                    </span>
                   </td>
-                  <td className="p-2 text-[11px]" style={{ color: isDup ? "#ff7b72" : TC.textFaint }}>
-                    {isDup ? matches.map(m => m.GESTIÓN || '—').join(', ') : '—'}
+                  <td className="p-2 text-[11px]" style={{ color: TC.textFaint }}>
+                    —
                   </td>
                 </tr>
               )

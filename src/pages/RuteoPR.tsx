@@ -1,16 +1,17 @@
 import { useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import * as XLSX from 'xlsx'
-import { Upload, Download } from 'lucide-react'
+import { } from 'lucide-react'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
-import { PageShell, Card, Btn } from '../ui/DS'
+import { PageShell, Btn } from '../ui/DS'
 import GlassHeader, { GlassHeaderTab } from '../components/ui/GlassHeader'
 
 const PR_TABS: GlassHeaderTab[] = [
-  { id: 'archivos',  label: 'Cargar Archivos', icon: '📁', badgeVariant: 'blue'   },
-  { id: 'preruteo',  label: 'Pre Ruteo',       icon: '📋', badgeVariant: 'orange' },
-  { id: 'postruteo', label: 'Post Ruteo',      icon: '⚙️', badgeVariant: 'green'  },
-  { id: 'exports',   label: 'Exportar',        icon: '🚀', badgeVariant: 'purple' },
-  { id: 'correo',    label: 'Generar Correo',  icon: '✉️', badgeVariant: 'blue'   },
+  { id: 'archivos',  label: 'Cargar Archivos', icon: '📁' },
+  { id: 'preruteo',  label: 'Pre Ruteo',       icon: '📋' },
+  { id: 'postruteo', label: 'Post Ruteo',      icon: '⚙️' },
+  { id: 'exports',   label: 'Exportar',        icon: '🚀' },
+  { id: 'correo',    label: 'Generar Correo',  icon: '✉️' },
 ]
 
 /* ── helpers ── */
@@ -30,7 +31,7 @@ const CONFIG = {
   trucks_order: Array.from({length:40},(_,i)=>i+1).filter(i=>i!==30).map(i=>`VEH${String(i).padStart(2,'0')}`),
   special_fixed:{} as Record<string,string>,
   extraurban_communes:["ALHUE","BUIN","CALERA DE TANGO","COLINA","CURACAVI","EL MONTE","ISLA DE MAIPO","LAMPA","LO BARNECHEA","MARIA PINTO","MELIPILLA","PADRE HURTADO","PAINE","PENAFLOR","PIRQUE","SAN JOSE DE MAIPO","SAN PEDRO","TALAGANTE","TILTIL"],
-  weights:{distance_km:.44,duration_hr:.10,iso_count:.20,q_comunas:.01,volume_m3:.25},
+  weights:{distance_km:0.44,duration_hr:0.10,iso_count:0.20,q_comunas:0.01,volume_m3:0.25},
   zone_multiplier:{extraurbano:2.0,default:1.0}
 }
 Object.assign(CONFIG.special_fixed,{"Proyectos Leslie":"VEH98","VEH01 Postventa":"VEH99","VEH02 Postventa":"VEH101","Postventa 3":"VEH102"})
@@ -46,7 +47,6 @@ export default function RuteoPR() {
   const [f1Name, setF1Name] = useState('')
   const [fechaPicking, setFechaPicking] = useState(()=>{const d=new Date(); return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})
   const [fileSimpli, setFileSimpli] = useState<File|null>(null)
-  const [fileRuteo2, setFileRuteo2] = useState<File|null>(null)
   const [logs, setLogs] = useState<{msg:string;type:'ok'|'err'|'warn'|'info'}[]>([])
   const [sheetPlanData, setSheetPlanData] = useState<any[]>([])
   const [sheetResumenData, setSheetResumenData] = useState<any[]>([])
@@ -66,13 +66,13 @@ export default function RuteoPR() {
   const descargarRegular = ()=>{if(!dataF1) return; const f=dataF1.filter(r=>{if(r['TIPO_VISITA']==='PROJECT'||r['TIPO_VISITA']==='POST_SALES') return false; if(r['MINI_TICKET']==='no_mini_ticket') return true; if(r['MINI_TICKET']==='mini_ticket') return!esComunaMini(r['D_COUNTY']||r['CONDUCTOR']||''); return false}); if(!f.length) return addLog('Sin Ticket Regular','warn'); exportXlsx(f,`RUTEAR TICKET ${getFechaE()}.xlsx`); addLog(`Regular: ${f.length}`,'ok')}
 
   const processFlujo2 = async ()=>{
-    if(!fileSimpli||!fileRuteo2) return addLog('Sube ambos archivos','err')
+    if(!fileSimpli || !dataF1) return addLog('Carga el Archivo Base (Tab Archivos) y el Plan SimpliRoute','err')
     setProcessing(true); addLog('Procesando Polinomio…','info')
     try{
-      const dataSimpli=await readFile(fileSimpli); const dataRuteo=await readFile(fileRuteo2)
-      if(!dataSimpli.length||!dataRuteo.length) throw new Error('Archivos vacíos')
-      const ruteoDict:Record<string,string>={}; const cI=findCol(dataRuteo[0],["ISO","ID de referencia","Title"])||Object.keys(dataRuteo[0])[0]; const cC=findCol(dataRuteo[0],["D_COUNTY","COUNTY","COMUNA"])||"D_COUNTY"
-      dataRuteo.forEach(r=>{if(r[cI]) ruteoDict[String(r[cI]).trim().toUpperCase()]=r[cC]||""})
+      const dataSimpli=await readFile(fileSimpli);
+      if(!dataSimpli.length || !dataF1.length) throw new Error('Archivos vacíos')
+      const ruteoDict:Record<string,string>={}; const cI=findCol(dataF1[0],["ISO","ID de referencia","Title"])||Object.keys(dataF1[0])[0]; const cC=findCol(dataF1[0],["D_COUNTY","COUNTY","COMUNA"])||"D_COUNTY"
+      dataF1.forEach(r=>{if(r[cI]) ruteoDict[String(r[cI]).trim().toUpperCase()]=r[cC]||""})
       const sC={conductor:findCol(dataSimpli[0],["Conductor","Driver"])||"Conductor",titulo:findCol(dataSimpli[0],["Título","Title","ISO"])||"Título",vehiculo:findCol(dataSimpli[0],["Vehículo","Vehicle","Ruta"])||"Vehículo",distancia:findCol(dataSimpli[0],["Distancia","Distance"])||"Distancia",cap2:findCol(dataSimpli[0],["Capacidad 2","Capacity 2"])||"Capacidad 2",tiempoEst:findCol(dataSimpli[0],["Tiempo estimado de llegada","ETA"])||"Tiempo estimado de llegada",idRef:findCol(dataSimpli[0],["ID de referencia","DOFI"])||"ID de referencia"}
       const extraUrbanSet=new Set(CONFIG.extraurban_communes.map(c=>removeAccents(c)))
       const cleanSimpli=dataSimpli.map(row=>{const t=String(row[sC.titulo]).trim().toUpperCase(); if(t!=="INICIO"&&t!=="FIN") row[sC.conductor]=ruteoDict[t]||row[sC.conductor]; const zona=extraUrbanSet.has(removeAccents(row[sC.conductor]))?"Extraurbano":"Urbano"; const tiempo=row[sC.tiempoEst]||""; let fecha="",hora=""; if(tiempo.includes("T")){const p=tiempo.split("T");fecha=p[0];hora=p[1]}else if(tiempo.includes(" ")){const p=tiempo.split(" ");fecha=p[0];hora=p[1]}else{fecha=tiempo}; return{...row,_zona:zona,_fecha:fecha,_hora:hora}})
@@ -180,112 +180,133 @@ export default function RuteoPR() {
 
   return (
     <PageShell>
-      <GlassHeader 
-        appName="AM Route Builder"
-        icon="📦"
-        tabs={PR_TABS}
-        activeTab={tab}
-        onTabChange={(id) => setTab(id as TabKey|'correo')}
-      />
+      <GlassHeader appName="AM Route Builder" icon="📦" tabs={PR_TABS} activeTab={tab} onTabChange={(id) => setTab(id as TabKey)} />
 
-      <div className="flex flex-1 overflow-hidden" style={{ background: TC.bg }}>
-        {/* Main */}
-        <div className="flex-1 overflow-y-auto p-6" style={{background:TC.bg}}>
-          {tab==='archivos' && (
-            <div className="flex flex-col gap-4 max-w-lg">
-              <Card style={{padding:16}}>
-                <div className="text-[12px] font-bold text-blue-400 mb-2">📁 Archivo Base SCI <span className="bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded ml-2">Obligatorio</span></div>
-                <label className="flex items-center gap-2 w-full p-2 rounded border border-dashed cursor-pointer hover:bg-black/5 dark:hover:bg-white/5" style={{borderColor:TC.border}}>
-                  <Upload size={14} color={TC.textFaint}/><span className="text-[11px] truncate flex-1" style={{color:TC.textFaint}}>{f1Name||'Seleccionar archivo…'}</span>
-                  <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleF1}/>
-                </label>
-                {dataF1 && <div className="text-[10px] mt-1 text-green-400">✓ {dataF1.length} filas cargadas</div>}
-              </Card>
-              <Card style={{padding:16}}>
-                <div className="text-[12px] font-bold text-blue-400 mb-2">📅 Fecha de Picking</div>
-                <input type="date" className="w-full p-2 rounded text-[11px]" style={{background:TC.bg,color:TC.text,border:`1px solid ${TC.borderSoft}`}} value={fechaPicking} onChange={e=>setFechaPicking(e.target.value)}/>
-                <div className="text-[10px] mt-1" style={{color:TC.textFaint}}>Picking: <strong className="text-yellow-500">{getFechaP()}</strong> | Entrega: <strong className="text-yellow-500">{getFechaE()}</strong></div>
-              </Card>
-              <Card style={{padding:16}}>
-                <div className="text-[12px] font-bold text-blue-400 mb-2">📁 Plan SimpliRoute <span className="bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded ml-2">Post Ruteo</span></div>
-                <label className="flex items-center gap-2 w-full p-2 rounded border border-dashed cursor-pointer hover:bg-black/5 dark:hover:bg-white/5" style={{borderColor:TC.border}}>
-                  <Upload size={14} color={TC.textFaint}/><span className="text-[11px] truncate flex-1" style={{color:TC.textFaint}}>{fileSimpli?.name||'Subir Plan…'}</span>
-                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>{setFileSimpli(e.target.files?.[0]||null);e.target.value=''}}/>
-                </label>
-              </Card>
-              <Card style={{padding:16}}>
-                <div className="text-[12px] font-bold text-blue-400 mb-2">📁 Archivo Base SCI <span className="bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded ml-2">Post Ruteo</span></div>
-                <label className="flex items-center gap-2 w-full p-2 rounded border border-dashed cursor-pointer hover:bg-black/5 dark:hover:bg-white/5" style={{borderColor:TC.border}}>
-                  <Upload size={14} color={TC.textFaint}/><span className="text-[11px] truncate flex-1" style={{color:TC.textFaint}}>{fileRuteo2?.name||'Subir Base…'}</span>
-                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>{setFileRuteo2(e.target.files?.[0]||null);e.target.value=''}}/>
-                </label>
-              </Card>
-            </div>
-          )}
-
-          {tab==='preruteo' && (
-            <div className="flex flex-col gap-3 max-w-lg">
-              <Card style={{padding:16}}>
-                <div className="text-[12px] font-bold mb-3" style={{color:TC.textSub}}>📋 Generar Tickets</div>
-                <div className="text-[10px] mb-3" style={{color:TC.textFaint}}>Requiere el Archivo Base SCI cargado.</div>
-                <div className="flex flex-wrap gap-2">
-                  <Btn onClick={()=>descargarTickets('PROJECT','RUTEAR PROYECTOS')} disabled={!dataF1}>🏗 Proyectos</Btn>
-                  <Btn onClick={()=>descargarTickets('POST_SALES','RUTEAR POST SALES')} disabled={!dataF1}>📦 Post Sales</Btn>
-                  <Btn onClick={descargarMini} disabled={!dataF1}>🎫 Mini Ticket</Btn>
-                  <Btn onClick={descargarRegular} disabled={!dataF1}>🎟 Regular</Btn>
+      <div className="flex-1 overflow-hidden flex flex-col items-center p-6 custom-scrollbar" style={{ background: TC.bg }}>
+        <AnimatePresence mode="wait">
+          {tab === 'archivos' && (
+            <motion.div key="archivos" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full max-w-4xl space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* SCI Base */}
+                <div style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div className="text-[12px] font-bold text-blue-400">📁 Archivo Base SCI <span className="text-red-500 font-bold ml-2">!</span></div>
+                  <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-8 transition-all hover:bg-white/5 cursor-pointer" style={{ borderColor: TC.borderSoft }}>
+                    <div className="text-3xl mb-4">📄</div>
+                    <span className="text-xs font-medium text-center truncate w-full">{f1Name || 'Base SCI'}</span>
+                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleF1}/>
+                  </label>
+                  {dataF1 && (
+                    <div className="text-[10px] font-bold text-green-400 uppercase text-center">{dataF1.length} filas cargadas</div>
+                  )}
                 </div>
-              </Card>
-            </div>
-          )}
 
-          {tab==='postruteo' && (
-            <div className="flex flex-col gap-3 max-w-lg">
-              <Card style={{padding:16}}>
-                <div className="text-[12px] font-bold mb-2" style={{color:TC.textSub}}>⚙️ Ejecutar Polinomio</div>
-                <div className="text-[10px] mb-3" style={{color:TC.textFaint}}>Requiere Plan Simpliroute y Base SCI cargados en la tab Archivos.</div>
-                <Btn variant="primary" style={{width:'100%'}} onClick={processFlujo2} disabled={processing||!fileSimpli||!fileRuteo2}>{processing?'Procesando…':'▶ Ejecutar Polinomio'}</Btn>
-              </Card>
-              {metricsData && <Card style={{padding:16}}><div className="text-[10px] text-green-400">✅ {metricsData.total} vehículos · Prom {metricsData.prom} ISOs · Total {metricsData.sum} ISOs</div></Card>}
-            </div>
-          )}
-
-          {tab==='exports' && (
-            <div className="flex flex-col gap-4 max-w-lg">
-              <Card style={{padding:16,borderColor:'#eab308'}}>
-                <div className="text-[12px] font-bold text-yellow-500 mb-3 uppercase tracking-wider">🚀 Exportaciones Finales</div>
-                <div className="flex flex-col gap-2">
-                  <Btn variant="primary" onClick={downloadPlan} disabled={!sheetPlanData.length} style={{background:'#eab308',borderColor:'#eab308',color:'#000',justifyContent:'flex-start'}}><Download size={14}/>1. Plan RUTEO</Btn>
-                  <Btn onClick={downloadRouteTo} disabled={!sheetPlanData.length} style={{justifyContent:'flex-start'}}><Download size={14}/>2. ROUTE TO picking</Btn>
-                  <Btn onClick={downloadPreola} disabled={!dataF1} style={{justifyContent:'flex-start'}}><Download size={14}/>3. ROUTE TO PROYECT+POST SALES</Btn>
+                <div className="space-y-6">
+                  <div style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 16, padding: 20 }}>
+                    <div className="text-[11px] font-bold text-blue-400 mb-4 uppercase tracking-widest">Fecha de Picking</div>
+                    <input type="date" className="w-full p-2 rounded-lg text-xs font-bold outline-none border mb-3" style={{ background: 'rgba(0,0,0,0.2)', color: TC.text, borderColor: TC.borderSoft }} value={fechaPicking} onChange={e=>setFechaPicking(e.target.value)} />
+                    <div className="flex justify-between text-[10px] font-mono opacity-60">
+                      <div>PICK: <span className="text-orange-400">{getFechaP()}</span></div>
+                      <div>ENTREGA: <span className="text-green-400">{getFechaE()}</span></div>
+                    </div>
+                  </div>
                 </div>
-              </Card>
-            </div>
+              </div>
+            </motion.div>
           )}
 
-          {tab === ('correo' as any) && (
-            <div className="flex flex-col gap-4 max-w-lg">
-              <Card style={{padding:24, textAlign:'center'}}>
-                <div className="text-3xl mb-4">✉️</div>
-                <h3 className="text-lg font-bold mb-2" style={{color:TC.text}}>Generar Correo de Polinomio</h3>
-                <p className="text-[11px] mb-6" style={{color:TC.textFaint}}>
-                  Crea una plantilla HTML con la tabla de resumen y métricas de vehículos para pegar directamente en Outlook.
-                  Asegúrate de haber procesado el Polinomio (Post Ruteo) primero.
-                </p>
-                <Btn variant="primary" onClick={handleGenerarCorreo} disabled={!sheetResumenData.length} style={{width:'100%', padding:'12px'}}>
-                  Copiar Cuerpo del Correo
-                </Btn>
-                {!sheetResumenData.length && <p className="text-[9px] mt-2 text-red-400">⚠️ Falta ejecutar el Polinomio</p>}
-              </Card>
-            </div>
+          {tab === 'preruteo' && (
+            <motion.div key="preruteo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-xl">
+              <div style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 24, padding: 40, textAlign: 'center' }}>
+                <div className="grid grid-cols-2 gap-4">
+                  <Btn onClick={()=>descargarTickets('PROJECT','RUTEAR PROYECTOS')} disabled={!dataF1} variant="secondary" style={{ padding: 20, borderRadius: 16 }}>Proyectos</Btn>
+                  <Btn onClick={()=>descargarTickets('POST_SALES','RUTEAR POST SALES')} disabled={!dataF1} variant="secondary" style={{ padding: 20, borderRadius: 16 }}>Post Sales</Btn>
+                  <Btn onClick={descargarMini} disabled={!dataF1} variant="secondary" style={{ padding: 20, borderRadius: 16 }}>Mini Tickets</Btn>
+                  <Btn onClick={descargarRegular} disabled={!dataF1} variant="secondary" style={{ padding: 20, borderRadius: 16 }}>Ticket Regular</Btn>
+                </div>
+              </div>
+            </motion.div>
           )}
 
-          {/* Log */}
-          {logs.length>0 && (
-            <div className="mt-6 rounded border overflow-y-auto max-h-40 font-mono text-[10px] p-3 flex flex-col gap-1" style={{background:'#0d1117',borderColor:TC.borderSoft,color:'#e6edf3'}}>
-              {logs.map((L,i) => <div key={i} className={L.type==='err'?'text-red-400':L.type==='warn'?'text-yellow-400':L.type==='ok'?'text-green-400':'text-blue-300'}>{L.msg}</div>)}
-            </div>
+          {tab === 'postruteo' && (
+            <motion.div key="postruteo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-xl">
+              <div style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 24, padding: 48, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                <div className="flex flex-col gap-4 text-left">
+                    <div className="text-[11px] font-bold text-blue-400 uppercase tracking-widest">Plan de Simpliroute</div>
+                    <label className="flex items-center gap-3 p-4 rounded-xl border border-dashed hover:bg-white/5 cursor-pointer" style={{ borderColor: TC.borderSoft }}>
+                      <span className="text-xl">📁</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-bold truncate">{fileSimpli?.name || 'Cargar Plan Finalizado'}</div>
+                        <div className="text-[10px] opacity-40">Archivo exportado de SimpliRoute</div>
+                      </div>
+                      <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e=>{setFileSimpli(e.target.files?.[0]||null);e.target.value=''}}/>
+                    </label>
+                </div>
+
+                <div className="pt-4">
+                  <Btn variant="primary" onClick={processFlujo2} disabled={processing || !fileSimpli || !dataF1} style={{ padding: '14px 40px', borderRadius: 999, width: '100%' }}>
+                    {processing ? 'Procesando...' : '▶ Ejecutar Polinomio'}
+                  </Btn>
+                </div>
+                {metricsData && (
+                  <div className="flex justify-center gap-8 mt-10">
+                    <div className="text-center"><div className="text-[10px] opacity-40 font-bold uppercase mb-1">Vehículos</div><div className="text-2xl font-black text-blue-400">{metricsData.total}</div></div>
+                    <div className="text-center"><div className="text-[10px] opacity-40 font-bold uppercase mb-1">Prom ISO</div><div className="text-2xl font-black text-blue-400">{metricsData.prom}</div></div>
+                    <div className="text-center"><div className="text-[10px] opacity-40 font-bold uppercase mb-1">Total ISO</div><div className="text-2xl font-black text-blue-400">{metricsData.sum}</div></div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
           )}
-        </div>
+
+          {tab === 'exports' && (
+            <motion.div key="exports" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-xl">
+              <div style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 24, padding: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <Btn variant="primary" onClick={downloadPlan} disabled={!sheetPlanData.length} style={{ background: '#eab308', borderColor: '#eab308', color: '#000', borderRadius: 12, height: 50 }}>1. Plan RUTEO</Btn>
+                <Btn onClick={downloadRouteTo} disabled={!sheetPlanData.length} variant="secondary" style={{ borderRadius: 12, height: 50 }}>2. Route To (Picking)</Btn>
+                <Btn onClick={downloadPreola} disabled={!dataF1} variant="secondary" style={{ borderRadius: 12, height: 50 }}>3. Pre-Ola (Proyectos)</Btn>
+              </div>
+            </motion.div>
+          )}
+
+          {tab === 'correo' && (
+            <motion.div key="correo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-4xl">
+              <div style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 24, overflow: 'hidden' }}>
+                <div className="border-b p-6 flex items-center justify-between" style={{ borderColor: TC.borderSoft }}>
+                   <div className="text-sm font-bold uppercase tracking-widest opacity-60">Correo Polinomio</div>
+                   <Btn variant="primary" onClick={handleGenerarCorreo} disabled={!sheetResumenData.length} size="sm">Copiar HTML</Btn>
+                </div>
+                <div className="p-8">
+                  {!sheetResumenData.length ? <div className="py-20 text-center opacity-30 text-xs uppercase font-bold tracking-widest">Sin datos</div> : (
+                    <div className="bg-white p-6 rounded-xl shadow-inner max-h-[400px] overflow-auto border border-black/10">
+                      <div style={{ fontFamily: 'Arial, sans-serif', color: '#111', fontSize: '12px', lineHeight: '1.5' }}>
+                        <p>Team,</p><p>Esperando que se encuentren bien, les envío archivo con detalle de las rutas.</p>
+                        <div className="bg-[#ffda1a] p-2 inline-block font-bold mb-4 rounded">Equipo la PRE-OLA ya se encuentra cargada a sistema</div>
+                        <table className="w-full border-collapse mb-4 text-[10px]" style={{ border: '1px solid #ddd' }}>
+                          <tr style={{ background: '#0058A3', color: '#fff' }}><th className="p-2 border">Vehículos</th><th className="p-2 border">Prom ISO</th><th className="p-2 border">Suma ISO</th></tr>
+                          <tr className="text-center font-bold font-mono"><td className="p-2 border">{metricsData?.total}</td><td className="p-2 border">{metricsData?.prom}</td><td className="p-2 border">{metricsData?.sum}</td></tr>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {logs.length > 0 && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-4xl mt-8">
+            <div className="rounded-xl border bg-black/40 backdrop-blur-xl p-4 font-mono text-[10px] overflow-y-auto max-h-[140px] custom-scrollbar" style={{ borderColor: TC.borderSoft, color: '#e6edf3' }}>
+               {logs.map((L,i) => (
+                 <div key={i} className={`py-1 border-b border-white/5 last:border-0 flex gap-3 ${L.type==='err'?'text-red-400':L.type==='warn'?'text-yellow-400':L.type==='ok'?'text-green-400':'text-blue-300'}`}>
+                    <span className="opacity-20 shrink-0">{new Date().toLocaleTimeString('es-CL', { hour12: false })}</span>
+                    <span className="font-medium">{L.msg}</span>
+                 </div>
+               ))}
+               <div ref={el => el?.scrollIntoView({ behavior: 'smooth' })} />
+            </div>
+          </motion.div>
+        )}
       </div>
     </PageShell>
   )

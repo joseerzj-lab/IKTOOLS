@@ -183,6 +183,7 @@ export default function GlassHeader({ activeTab, onTabChange, badges, severities
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
                 whileTap={{ scale: 0.96 }}
+                whileHover={{ y: -1 }}
                 style={{
                   position: 'relative',
                   display: 'flex', alignItems: 'center', gap: 5,
@@ -233,17 +234,30 @@ export default function GlassHeader({ activeTab, onTabChange, badges, severities
                 </span>
 
                 {badge != null && badge > 0 && (
-                  <span style={{
-                    position: 'relative', zIndex: 1,
-                    fontSize: 9, fontWeight: 700,
-                    padding: '1px 5px',
-                    borderRadius: R.full,
-                    minWidth: 16, textAlign: 'center',
-                    background: bc.bg, color: bc.color,
-                    lineHeight: 1.6,
-                  }}>
+                  <motion.span 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ 
+                      scale: 1, 
+                      opacity: 1,
+                      boxShadow: isActive ? [`0 0 0px ${bc.color}`, `0 0 8px ${bc.color}`, `0 0 0px ${bc.color}`] : 'none'
+                    }}
+                    transition={{ 
+                      duration: 2, 
+                      repeat: Infinity,
+                      opacity: { duration: 0.2 } 
+                    }}
+                    style={{
+                      position: 'relative', zIndex: 1,
+                      fontSize: 9, fontWeight: 700,
+                      padding: '1px 5px',
+                      borderRadius: R.full,
+                      minWidth: 16, textAlign: 'center',
+                      background: bc.bg, color: bc.color,
+                      lineHeight: 1.6,
+                    }}
+                  >
                     {badge > 999 ? '999+' : badge}
-                  </span>
+                  </motion.span>
                 )}
               </motion.button>
             )

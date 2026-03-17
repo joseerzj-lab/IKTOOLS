@@ -244,11 +244,11 @@ export default function TabExport({
     const now  = new Date().toLocaleString('es-CL')
     const nPend  = rows.filter(r => r.status === 'pendiente').length
     const nAlert = rows.filter(r => r.status === 'alerta').length
-    const nRes   = rows.filter(r => r.status === 'resuelto' || r.status === 'aprobado').length
+    const nRes   = rows.filter(r => r.status === 'revisado' || r.status === 'aprobado').length
 
     const rowsHtml = rows.map((r, i) => {
-      const estado = r.status === 'resuelto' ? 'Resuelto' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'
-      const color  = r.status === 'resuelto' || r.status === 'aprobado' ? '#1a6a2a' : r.status === 'alerta' ? '#8b0000' : '#7a5000'
+      const estado = r.status === 'revisado' ? 'Revisado' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'
+      const color  = r.status === 'revisado' || r.status === 'aprobado' ? '#1a6a2a' : r.status === 'alerta' ? '#8b0000' : '#7a5000'
       const obs    = r.tipo === 'fuera' ? 'Fuera de Ruta' : r.tipo === 'ambos' ? 'FR + C.Incorrecta' : 'C. Incorrecta'
       return `<tr style="background:${i%2===0?'#fff':'#f8f9fa'}">
         <td style="padding:5px 8px;font-weight:700;font-family:monospace;color:#0051BA">${escHtml(r.iso)}</td>
@@ -304,7 +304,7 @@ export default function TabExport({
     const wsData = [['ISO','Vehículo','Dirección','Observación','Detalle','Estado']]
     for (const r of summaryRows) {
       wsData.push([r.iso, r.veh, r.dir||'', r.obs||'', r.detalle||'',
-        r.status==='resuelto'?'Resuelto':r.status==='aprobado'?'Aprobado':r.status==='alerta'?'Alerta':'Pendiente'])
+        r.status==='revisado'?'Revisado':r.status==='aprobado'?'Aprobado':r.status==='alerta'?'Alerta':'Pendiente'])
     }
     const ws = W.utils.aoa_to_sheet(wsData)
     ws['!cols'] = [{wch:14},{wch:20},{wch:45},{wch:20},{wch:55},{wch:14}]
@@ -368,7 +368,7 @@ export default function TabExport({
     let rich = `<table style="border-collapse:collapse"><tr><th style="${hS}">ISO</th><th style="${hS}">Vehículo</th><th style="${hS}">Dirección</th><th style="${hS}">Observación</th><th style="${hS}">Detalle</th><th style="${hS}">Estado</th></tr>`
     let plain = 'ISO\tVehículo\tDirección\tObservación\tDetalle\tEstado\n'
     for (const r of summaryRows) {
-      const e = r.status==='resuelto'?'Resuelto':r.status==='aprobado'?'Aprobado':r.status==='alerta'?'Alerta':'Pendiente'
+      const e = r.status==='revisado'?'Revisado':r.status==='aprobado'?'Aprobado':r.status==='alerta'?'Alerta':'Pendiente'
       rich += `<tr><td style="${tS}font-weight:700">${escHtml(r.iso)}</td><td style="${tS}">${escHtml(r.veh)}</td><td style="${tS}">${escHtml(r.dir||'')}</td><td style="${tS}">${escHtml(r.obs||'')}</td><td style="${tS}">${escHtml(r.detalle||'')}</td><td style="${tS}">${e}</td></tr>`
       plain += `${r.iso}\t${r.veh}\t${r.dir||''}\t${r.obs||''}\t${r.detalle||''}\t${e}\n`
     }

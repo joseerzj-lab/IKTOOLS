@@ -11,6 +11,22 @@ import TabDuplicates from '../components/ruteo-postventa/TabDuplicates'
 import TabProjects from '../components/ruteo-postventa/TabProjects'
 import type { Row, Stats, TabKey } from '../components/ruteo-postventa/types'
 import * as XLSX from 'xlsx'
+import { compress, decompress } from 'lz-string'
+import { parseDelimitedText } from '../utils/parsing'
+
+const normalizeHeader = (h: string) => 
+  h.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+
+const mapNormalizedRows = (rows: any[]) => {
+  if (!rows.length) return []
+  return rows.map(row => {
+    const r: any = {}
+    for (const k in row) {
+      r[normalizeHeader(k)] = String(row[k] || "").trim().toUpperCase()
+    }
+    return r
+  })
+}
 
 export default function RuteadorV9() {
   const { theme } = useTheme()
@@ -20,24 +36,27 @@ export default function RuteadorV9() {
   const [tab, setTab] = useState<TabKey>('load')
   const [columns, setColumns] = useState<string[]>(() => {
     try {
-        const saved = localStorage.getItem('r9-cols')
-        const parsed = saved ? JSON.parse(saved) : ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES']
-        return parsed.filter((c: string) => c !== 'Commerce')
-    } catch { return ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES'] }
+      const saved = localStorage.getItem('r9-cols')
+      const parsed = saved ? JSON.parse(saved) : ['ISO', 'GESTIÓN', 'COMUNA', 'ESTADO', 'VEH', 'ORIGEN', 'COMENTARIO_RAW']
+      return parsed.filter((c: string) => c !== 'Commerce')
+    } catch { return ['ISO', 'GESTIÓN', 'COMUNA', 'ESTADO', 'VEH', 'ORIGEN', 'COMENTARIO_RAW'] }
   })
   const [rows, setRows] = useState<Row[]>(() => {
     try {
-        const saved = localStorage.getItem('r9-rows')
-        return saved ? JSON.parse(saved) : []
+        const saved = localStorage.getItem('r9-rows-v2')
+        if (saved) {
+           return JSON.parse(decompress(saved) || '[]')
+        }
+        // Fallback for old non-compressed data
+        const old = localStorage.getItem('r9-rows')
+        return old ? JSON.parse(old) : []
     } catch { return [] }
   })
   const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
     try {
-        const saved = localStorage.getItem('r9-vis')
-        const parsed = saved ? new Set<string>(JSON.parse(saved)) : new Set<string>(['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES'])
-        parsed.delete('Commerce')
-        return parsed
-    } catch { return new Set<string>(['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES']) }
+      const saved = localStorage.getItem('r9-vis')
+      return saved ? new Set(JSON.parse(saved)) : new Set(columns)
+    } catch { return new Set(columns) }
   })
   const [toast, setToast] = useState('')
   
@@ -46,11 +65,31 @@ export default function RuteadorV9() {
   const [pvPlanName, setPvPlanName] = useState('')
   const [proyectosData, setProyectosData] = useState<any[]>([])
   const [projectsName, setProjectsName] = useState('')
+  const [showShortcuts, setShowShortcuts] = useState(false)
 
   // ── Persistence ──
   useEffect(() => { localStorage.setItem('r9-cols', JSON.stringify(columns)) }, [columns])
-  useEffect(() => { localStorage.setItem('r9-rows', JSON.stringify(rows)) }, [rows])
+  useEffect(() => { 
+    if (rows.length > 0) {
+      localStorage.setItem('r9-rows-v2', compress(JSON.stringify(rows))) 
+      localStorage.removeItem('r9-rows') // Clean up old uncompressed key
+    } else {
+      localStorage.removeItem('r9-rows-v2')
+    }
+  }, [rows])
   useEffect(() => { localStorage.setItem('r9-vis', JSON.stringify([...visibleCols])) }, [visibleCols])
+
+  useEffect(() => {
+    const handleDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/')) {
+        e.preventDefault()
+        setShowShortcuts(p => !p)
+      }
+      if (e.key === 'Escape') setShowShortcuts(false)
+    }
+    window.addEventListener('keydown', handleDown)
+    return () => window.removeEventListener('keydown', handleDown)
+  }, [])
 
   // ── Helpers ──
   const flash = useCallback((msg: string) => {
@@ -111,6 +150,14 @@ export default function RuteadorV9() {
     flash('✓ Nueva tabla creada')
   }
 
+  const clearDashboard = () => {
+    if (rows.length === 0) return
+    if (window.confirm('¿Estás seguro de que deseas borrar todos los datos del dashboard?')) {
+      setRows([])
+      flash('✓ Dashboard limpiado')
+    }
+  }
+
   const exportJSON = () => {
     const data = JSON.stringify({ columns, rows, pvPlanData, proyectosData })
     const blob = new Blob([data], { type: 'application/json' })
@@ -129,22 +176,23 @@ export default function RuteadorV9() {
         const data = new Uint8Array(e.target?.result as ArrayBuffer)
         const workbook = XLSX.read(data, { type: 'array' })
         const sheetName = workbook.SheetNames[0]
-        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) as any[]
+        const xlRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' }) as any[]
         
-        if (!rows.length) return flash('⚠️ Archivo vacío')
+        if (!xlRows.length) return flash('⚠️ Archivo vacío')
         
-        const keys = Object.keys(rows[0])
-        const cTit = keys.find(k => k === "TITULO" || k === "TÍTULO") || keys.find(k => k.includes("TITULO") || k.includes("TÍTULO") || k.includes("ISO"))
-        const cVeh = keys.find(k => k === "VEHICULO" || k === "VEHÍCULO" || k === "VEH") || keys.find(k => k.includes("VEHICULO") || k.includes("VEHÍCULO"))
+        const normRows = mapNormalizedRows(xlRows)
+        const keys = Object.keys(normRows[0])
+        const cTit = keys.find(k => k === "TITULO") || keys.find(k => k.includes("TITULO") || k.includes("ISO"))
+        const cVeh = keys.find(k => k === "VEHICULO" || k === "VEH") || keys.find(k => k.includes("VEHICULO"))
         
         if (!cTit) return flash('⚠️ No se detectó columna ISO/Título')
         
-        const pvRows = rows.filter(r => {
-          const veh = String(r[cVeh || ''] || "").trim().toUpperCase()
+        const pvRows = normRows.filter(r => {
+          const veh = String(r[cVeh || ''] || "")
           return /^VEH01\s*POST\s*VENTA/.test(veh) || /^VEH01\s*POSTVENTA/.test(veh)
         })
         
-        const isos = pvRows.map(r => String(r[cTit] || "").trim().toUpperCase()).filter(iso => iso && iso !== "INICIO" && iso !== "FIN")
+        const isos = pvRows.map(r => String(r[cTit] || "")).filter(iso => iso && iso !== "INICIO" && iso !== "FIN")
         setPvPlanData(isos)
         setPvPlanName(file.name)
         flash(`✓ ${isos.length} ISOs de Postventa cargadas`)
@@ -217,17 +265,44 @@ export default function RuteadorV9() {
         const data = new Uint8Array(e.target?.result as ArrayBuffer)
         const workbook = XLSX.read(data, { type: 'array' })
         const sheetName = workbook.SheetNames[0]
-        const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]) as any[]
+        const xlRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' }) as any[]
         
-        if (!rows.length) return flash('⚠️ Archivo de proyectos vacío')
+        if (!xlRows.length) return flash('⚠️ Archivo de proyectos vacío')
         
-        const isDos = Object.keys(rows[0]).some(k => k === 'VEHÍCULO' || k === 'VEHICULO')
-        const formatted = rows.map(r => ({
-          ISO: String(r.ISO || r.TITULO || r.TÍTULO || '').trim().toUpperCase(),
-          DIRECCIÓN: String(r.DIRECCIÓN || r.DIRECCION || '').trim(),
-          VEHÍCULO: r.VEHÍCULO || r.VEHICULO || '',
-          _tipo: isDos ? 'dos' : 'uno'
-        }))
+        const normRows = mapNormalizedRows(xlRows)
+        const keys = Object.keys(normRows[0])
+        
+        const cTit = keys.find(k => k === "TITULO") || keys.find(k => k.includes("TITULO") || k.includes("ISO"))
+        const cDir = keys.find(k => k.includes("DIRECCI") || k.includes("DOMICILIO"))
+        const cCond = keys.find(k => k.includes("CONDUCTOR"))
+
+        if (!cTit || !cDir) return flash(`⚠️ Columnas no detectadas. Cols: ${keys.join(', ')}`)
+
+        const hasAdicional = normRows.some(r => String(r[cCond || ''] || "").includes("PROYECTO"))
+
+        let formatted: any[] = []
+        if (hasAdicional) {
+          formatted = normRows.filter(r => {
+            const cond = String(r[cCond || ''] || "")
+            return cond.includes("FRANCISCO") || cond.includes("PROYECTO")
+          }).map(r => {
+            const cond = String(r[cCond || ''] || "")
+            const veh = cond.includes("FRANCISCO") ? "VEH98" : cond.includes("PROYECTO") ? "VEH98 Adicional" : ""
+            return {
+              _tipo: 'dos',
+              'VEHÍCULO': veh,
+              ISO: String(r[cTit] || ""),
+              DIRECCIÓN: String(r[cDir] || "")
+            }
+          })
+        } else {
+          formatted = normRows.filter(r => String(r[cCond || ''] || "").includes("FRANCISCO"))
+            .map(r => ({
+              _tipo: 'uno',
+              ISO: String(r[cTit] || ""),
+              DIRECCIÓN: String(r[cDir] || "")
+            }))
+        }
         
         setProyectosData(formatted)
         setProjectsName(file.name)
@@ -475,6 +550,7 @@ export default function RuteadorV9() {
                 onCrearNueva={crearNueva} 
                 onUpdateRows={setRows}
                 onNotify={flash}
+                onClearAll={clearDashboard}
               />
             </motion.div>
           )}
@@ -514,6 +590,52 @@ export default function RuteadorV9() {
             className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-blue-500 text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-2xl z-50 pointer-events-none"
           >
             {toast}
+          </motion.div>
+        )}
+
+        {showShortcuts && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowShortcuts(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="w-full max-w-lg rounded-3xl p-8 border shadow-2xl overflow-hidden relative"
+              style={{ background: TC.bgCard, borderColor: TC.borderSoft }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="absolute top-0 right-0 p-4 opacity-50 cursor-pointer" onClick={() => setShowShortcuts(false)}>✕</div>
+              <h2 className="text-xl font-bold mb-6 flex items-center gap-2" style={{ color: TC.text }}>
+                <span className="text-2xl">⌨️</span> Atajos de Teclado
+              </h2>
+              
+              <div className="grid grid-cols-1 gap-4">
+                {[
+                  { k: 'Ctrl + ?', d: 'Abrir/Cerrar esta guía' },
+                  { k: 'Ctrl + C', d: 'Copiar selección de tabla (Tabular)' },
+                  { k: 'Ctrl + V', d: 'Pegar datos en tabla (Distribuye automáticamente)' },
+                  { k: 'Arrows', d: 'Navegar por las celdas de la tabla' },
+                  { k: 'Enter', d: 'Bajar a la siguiente celda' },
+                  { k: 'Shift + Arrows', d: 'Expandir selección de celdas' },
+                  { k: 'Esc', d: 'Cerrar modales o limpiar selección' },
+                ].map((s, i) => (
+                  <div key={i} className="flex items-center justify-between py-2 border-b border-dashed" style={{ borderColor: TC.borderSoft }}>
+                    <span className="text-xs" style={{ color: TC.textSub }}>{s.d}</span>
+                    <span className="px-2 py-1 rounded bg-black/20 font-mono text-[10px] font-bold border border-white/10" style={{ color: TC.text }}>{s.k}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-8 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                <p className="text-[10px] leading-relaxed italic" style={{ color: TC.textFaint }}>
+                  💡 Tip: Puedes arrastrar el mouse sobre la tabla para seleccionar múltiples celdas y borrarlas todas con la tecla Suprimir.
+                </p>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

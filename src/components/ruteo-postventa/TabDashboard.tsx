@@ -5,8 +5,10 @@ import { exportElementAsImage } from '../../utils/exportUtils'
 import type { Row, Stats } from './types'
 import { useTheme, getThemeColors } from '../../context/ThemeContext'
 import { Btn } from '../../ui/DS'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
 interface Props {
+// ... (rest of props)
   columns: string[]
   rows: Row[]
   visibleCols: Set<string>
@@ -18,12 +20,13 @@ interface Props {
   onCrearNueva: () => void
   onUpdateRows: (rows: Row[]) => void
   onNotify: (msg: string) => void
+  onClearAll: () => void
 }
 
 export default function TabDashboard({
   columns, rows, visibleCols, setVisibleCols,
   stats, onUpdateCell, onAddRow, onDeleteRow, onCrearNueva,
-  onUpdateRows, onNotify
+  onUpdateRows, onNotify, onClearAll
 }: Props) {
   const { theme } = useTheme()
   const TC = getThemeColors(theme)
@@ -243,6 +246,34 @@ export default function TabDashboard({
     }
   }
 
+  const highlightText = (text: string, highlight: string) => {
+    if (!highlight.trim()) return text
+    const parts = String(text).split(new RegExp(`(${highlight.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'))
+    return (
+      <>
+        {parts.map((part, i) => 
+          part.toLowerCase() === highlight.toLowerCase() 
+            ? <mark key={i} className="bg-yellow-400/40 text-inherit rounded-sm px-0.5">{part}</mark> 
+            : part
+        )}
+      </>
+    )
+  }
+
+  const handleDuplicateRow = (idx: number) => {
+    const newRows = [...rows]
+    newRows.splice(idx + 1, 0, { ...rows[idx] })
+    onUpdateRows(newRows)
+    onNotify('✓ Fila duplicada')
+  }
+
+  const handleCycleGestion = (idx: number) => {
+    const gestions = ['REPITE', 'RETIRO', 'K8', 'ENVIO Y RETIRO', 'SOLO ENVIO', 'PROYECTO']
+    const current = String(rows[idx]['GESTIÓN'] || '').toUpperCase()
+    const nextIdx = (gestions.indexOf(current) + 1) % gestions.length
+    onUpdateCell(idx, 'GESTIÓN', gestions[nextIdx])
+  }
+
   const getFilteredAndSorted = () => {
     let result = rows
     if (search.trim()) {
@@ -272,7 +303,7 @@ export default function TabDashboard({
   }
 
   const exportToImage = async () => {
-    const el = document.getElementById('dashboard-table-container')
+    const el = parentRef.current
     if (!el) return
     await exportElementAsImage(el, 'Dashboard_Ruteo.png', {
       backgroundColor: theme === 'light' ? '#f6f8fa' : '#0d1117',
@@ -297,6 +328,15 @@ export default function TabDashboard({
 
   const filtered = getFilteredAndSorted()
   const vCols = columns.filter(c => visibleCols.has(c))
+
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 36,
+    overscan: 10,
+  })
 
   // Find duplicates
   const isoCounts = useMemo(() => {
@@ -371,6 +411,16 @@ export default function TabDashboard({
             >
               <Columns3 size={12} /> Cols
             </button>
+            {rows.length > 0 && (
+              <button
+                onClick={onClearAll}
+                className="text-[10px] font-bold px-2 py-1.5 rounded transition-colors hover:bg-red-500/10 flex items-center gap-1"
+                style={{ color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', cursor: 'pointer' }}
+                title="Borrar todos los datos"
+              >
+                <Trash2 size={12} /> Limpiar
+              </button>
+            )}
           </div>
         </div>
         
@@ -427,7 +477,11 @@ export default function TabDashboard({
       )}
 
       {/* Grid */}
-      <div className="flex-1 min-h-0 overflow-auto custom-scrollbar" id="dashboard-table-container">
+      <div 
+        ref={parentRef}
+        className="flex-1 min-h-0 overflow-auto custom-scrollbar" 
+        id="dashboard-table-container"
+      >
         {rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-5 p-10 text-center">
             <div className="w-20 h-20 rounded-[2rem] bg-blue-500/5 border-2 border-dashed flex items-center justify-center mb-2" style={{ borderColor: TC.borderSoft }}>
@@ -442,133 +496,138 @@ export default function TabDashboard({
             </Btn>
           </div>
         ) : (
-          <table className="min-w-full text-[11px] font-mono" style={{ borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th className="w-8 p-1.5 text-center sticky top-0 z-[100] align-top pt-4" style={{ background: TC.bgCardAlt, borderBottom: `1px solid ${TC.borderSoft}` }}>
-                  <span className="text-[10px] font-bold" style={{ color: TC.text }}>#</span>
-                </th>
-                {vCols.map(c => {
-                  const isActive = colFilters[c]?.size > 0
-                  return (
-                    <th key={c} className="text-left p-1.5 align-top sticky top-0 z-[100] min-w-[120px]" style={{ background: TC.bgCardAlt, borderBottom: `1px solid ${TC.borderSoft}` }}>
-                      <div className="flex items-center justify-between mb-1.5 px-1 relative">
-                        <div className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: isActive ? '#38bdf8' : TC.text }}>
-                          {c}
-                        </div>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setActiveFilterCol(activeFilterCol === c ? null : c); setFilterSearch('') }}
-                          className={`p-1 rounded transition-colors hover:bg-white/10 ${isActive ? 'text-blue-400 bg-blue-500/10' : 'text-gray-500 opacity-50 hover:opacity-100'}`}
-                        >
-                          <Filter size={11} />
-                        </button>
-                        
-                        {/* Filter Dropdown Menu */}
-                        {activeFilterCol === c && (
-                          <div ref={filterMenuRef} className="absolute top-full right-0 mt-1 w-48 rounded-xl shadow-xl border z-[200] overflow-hidden" style={{ background: TC.bgCard, borderColor: TC.borderSoft }}>
-                            <div className="p-2 border-b flex flex-col gap-1" style={{ borderColor: TC.borderSoft }}>
-                              <button 
-                                onClick={() => { setSortCol({ col: c, dir: 'asc' }); setActiveFilterCol(null) }}
-                                className="flex items-center gap-2 text-[10px] p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors w-full text-left"
-                                style={{ color: TC.text, background: sortCol?.col === c && sortCol.dir === 'asc' ? 'rgba(56,189,248,0.1)' : 'transparent' }}
-                              >
-                                <ArrowDownAZ size={12} className={sortCol?.col === c && sortCol.dir === 'asc' ? 'text-blue-400' : ''} /> Ordenar A a Z
-                              </button>
-                              <button 
-                                onClick={() => { setSortCol({ col: c, dir: 'desc' }); setActiveFilterCol(null) }}
-                                className="flex items-center gap-2 text-[10px] p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors w-full text-left"
-                                style={{ color: TC.text, background: sortCol?.col === c && sortCol.dir === 'desc' ? 'rgba(56,189,248,0.1)' : 'transparent' }}
-                              >
-                                <ArrowUpZA size={12} className={sortCol?.col === c && sortCol.dir === 'desc' ? 'text-blue-400' : ''} /> Ordenar Z a A
-                              </button>
-                            </div>
-                            <div className="p-2 border-b" style={{ borderColor: TC.borderSoft }}>
-                              <div className="relative">
-                                <Search size={10} color={TC.textFaint} className="absolute left-2 top-1/2 -translate-y-1/2" />
-                                <input 
-                                  type="text"
-                                  autoFocus
-                                  className="w-full pl-6 pr-2 py-1 text-[10px] rounded outline-none"
-                                  style={{ background: 'rgba(255,255,255,0.05)', color: TC.text, border: `1px solid ${TC.borderSoft}` }}
-                                  placeholder="Buscar valor..."
-                                  value={filterSearch}
-                                  onChange={e => setFilterSearch(e.target.value)}
-                                />
-                              </div>
-                            </div>
-                            <div className="max-h-48 overflow-y-auto p-1 custom-scrollbar">
-                              <label className="flex items-center gap-2 p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors mb-1 border-b" style={{ borderColor: TC.borderSoft }}>
-                                <input 
-                                  type="checkbox" 
-                                  className="accent-blue-500 w-3 h-3"
-                                  checked={!colFilters[c] || colFilters[c].size === 0}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setColFilters(p => { const n = {...p}; delete n[c]; return n })
-                                    } else {
-                                      // Deseleccionar todo = set con un valor que no va a hacer match para que filtre todo, o vaciar tabla?
-                                      // Lo habitual de Excel es que si deseleccionas todo, no se ve nada.
-                                      // Como no podemos guardar un set vacío (porque un set vacío lo usamos como "no hay filtro"), creamos un Set con un valor imposible.
-                                      setColFilters(p => ({ ...p, [c]: new Set(['__EMPTY__']) }))
-                                    }
-                                  }}
-                                />
-                                <span className="text-[10px] font-bold" style={{ color: TC.text }}>(Seleccionar Todo)</span>
-                              </label>
-                              {uniqueValuesForCol(c)
-                                .filter(v => !filterSearch || v.toLowerCase().includes(filterSearch.toLowerCase()))
-                                .map(v => (
-                                  <label key={v} className="flex items-center gap-2 p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors">
-                                    <input 
-                                      type="checkbox" 
-                                      className="accent-blue-500 w-3 h-3"
-                                      checked={!colFilters[c] || colFilters[c].size === 0 || colFilters[c].has(v)}
-                                      onChange={(e) => {
-                                        setColFilters(p => {
-                                          const prevSet = p[c] || new Set(uniqueValuesForCol(c))
-                                          const newSet = new Set(prevSet)
-                                          if (e.target.checked) newSet.add(v)
-                                          else newSet.delete(v)
-                                          
-                                          if (newSet.size === uniqueValuesForCol(c).length) {
-                                            const n = {...p}; delete n[c]; return n
-                                          }
-                                          return { ...p, [c]: newSet }
-                                        })
-                                      }}
-                                    />
-                                    <span className="text-[10px] truncate" style={{ color: v ? TC.text : TC.textFaint }}>{v || '(Vacío)'}</span>
-                                  </label>
-                              ))}
-                            </div>
-                            {colFilters[c] && colFilters[c].size > 0 && (
-                              <div className="p-1.5 border-t bg-black/10 flex justify-between" style={{ borderColor: TC.borderSoft }}>
-                                <button className="text-[9px] text-gray-500 hover:text-white px-2 py-1" onClick={() => setActiveFilterCol(null)}>Cerrar</button>
-                                <button className="text-[9px] text-red-400 hover:text-red-300 px-2 py-1" onClick={() => setColFilters(p => { const n = {...p}; delete n[c]; return n })}>Borrar</button>
-                              </div>
-                            )}
-                          </div>
-                        )}
+          <div style={{ minWidth: '100%', width: 'fit-content' }}>
+            <div className="sticky top-0 z-[110] flex" style={{ background: TC.bgCardAlt, borderBottom: `1px solid ${TC.borderSoft}` }}>
+              <div className="w-8 p-1.5 flex items-center justify-center shrink-0 border-r" style={{ borderColor: TC.borderSoft }}>
+                <span className="text-[10px] font-bold" style={{ color: TC.text }}>#</span>
+              </div>
+              {vCols.map(c => {
+                const isActive = colFilters[c]?.size > 0
+                return (
+                  <div key={c} className="p-1.5 min-w-[120px] flex-1 border-r" style={{ borderColor: TC.borderSoft }}>
+                    <div className="flex items-center justify-between mb-1.5 px-1 relative">
+                      <div className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: isActive ? '#38bdf8' : TC.text }}>
+                        {c}
                       </div>
-                    </th>
-                  )
-                })}
-                <th className="w-6 sticky top-0 z-10" style={{ background: TC.bgCardAlt, borderBottom: `1px solid ${TC.borderSoft}` }} />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r, ri) => {
-                const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setActiveFilterCol(activeFilterCol === c ? null : c); setFilterSearch('') }}
+                        className={`p-1 rounded transition-colors hover:bg-white/10 ${isActive ? 'text-blue-400 bg-blue-500/10' : 'text-gray-500 opacity-50 hover:opacity-100'}`}
+                      >
+                        <Filter size={11} />
+                      </button>
+                      
+                      {activeFilterCol === c && (
+                        <div ref={filterMenuRef} className="absolute top-full right-0 mt-1 w-48 rounded-xl shadow-xl border z-[200] overflow-hidden" style={{ background: TC.bgCard, borderColor: TC.borderSoft }}>
+                          <div className="p-2 border-b flex flex-col gap-1" style={{ borderColor: TC.borderSoft }}>
+                            <button 
+                              onClick={() => { setSortCol({ col: c, dir: 'asc' }); setActiveFilterCol(null) }}
+                              className="flex items-center gap-2 text-[10px] p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors w-full text-left"
+                              style={{ color: TC.text, background: sortCol?.col === c && sortCol.dir === 'asc' ? 'rgba(56,189,248,0.1)' : 'transparent' }}
+                            >
+                              <ArrowDownAZ size={12} className={sortCol?.col === c && sortCol.dir === 'asc' ? 'text-blue-400' : ''} /> Ordenar A a Z
+                            </button>
+                            <button 
+                              onClick={() => { setSortCol({ col: c, dir: 'desc' }); setActiveFilterCol(null) }}
+                              className="flex items-center gap-2 text-[10px] p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors w-full text-left"
+                              style={{ color: TC.text, background: sortCol?.col === c && sortCol.dir === 'desc' ? 'rgba(56,189,248,0.1)' : 'transparent' }}
+                            >
+                              <ArrowUpZA size={12} className={sortCol?.col === c && sortCol.dir === 'desc' ? 'text-blue-400' : ''} /> Ordenar Z a A
+                            </button>
+                          </div>
+                          <div className="p-2 border-b" style={{ borderColor: TC.borderSoft }}>
+                            <div className="relative">
+                              <Search size={10} color={TC.textFaint} className="absolute left-2 top-1/2 -translate-y-1/2" />
+                              <input 
+                                type="text"
+                                autoFocus
+                                className="w-full pl-6 pr-2 py-1 text-[10px] rounded outline-none"
+                                style={{ background: 'rgba(255,255,255,0.05)', color: TC.text, border: `1px solid ${TC.borderSoft}` }}
+                                placeholder="Buscar valor..."
+                                value={filterSearch}
+                                onChange={e => setFilterSearch(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <div className="max-h-48 overflow-y-auto p-1 custom-scrollbar">
+                            <label className="flex items-center gap-2 p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors mb-1 border-b" style={{ borderColor: TC.borderSoft }}>
+                              <input 
+                                type="checkbox" 
+                                className="accent-blue-500 w-3 h-3"
+                                checked={!colFilters[c] || colFilters[c].size === 0}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setColFilters(p => { const n = {...p}; delete n[c]; return n })
+                                  } else {
+                                    setColFilters(p => ({ ...p, [c]: new Set(['__EMPTY__']) }))
+                                  }
+                                }}
+                              />
+                              <span className="text-[10px] font-bold" style={{ color: TC.text }}>(Seleccionar Todo)</span>
+                            </label>
+                            {uniqueValuesForCol(c)
+                              .filter(v => !filterSearch || v.toLowerCase().includes(filterSearch.toLowerCase()))
+                              .map(v => (
+                                <label key={v} className="flex items-center gap-2 p-1.5 hover:bg-white/5 rounded cursor-pointer transition-colors">
+                                  <input 
+                                    type="checkbox" 
+                                    className="accent-blue-500 w-3 h-3"
+                                    checked={!colFilters[c] || colFilters[c].size === 0 || colFilters[c].has(v)}
+                                    onChange={(e) => {
+                                      setColFilters(p => {
+                                        const prevSet = p[c] || new Set(uniqueValuesForCol(c))
+                                        const newSet = new Set(prevSet)
+                                        if (e.target.checked) newSet.add(v)
+                                        else newSet.delete(v)
+                                        if (newSet.size === uniqueValuesForCol(c).length) {
+                                          const n = {...p}; delete n[c]; return n
+                                        }
+                                        return { ...p, [c]: newSet }
+                                      })
+                                    }}
+                                  />
+                                  <span className="text-[10px] truncate" style={{ color: v ? TC.text : TC.textFaint }}>{v || '(Vacío)'}</span>
+                                </label>
+                            ))}
+                          </div>
+                          {colFilters[c] && colFilters[c].size > 0 && (
+                            <div className="p-1.5 border-t bg-black/10 flex justify-between" style={{ borderColor: TC.borderSoft }}>
+                              <button className="text-[9px] text-gray-500 hover:text-white px-2 py-1" onClick={() => setActiveFilterCol(null)}>Cerrar</button>
+                              <button className="text-[9px] text-red-400 hover:text-red-300 px-2 py-1" onClick={() => setColFilters(p => { const n = {...p}; delete n[c]; return n })}>Borrar</button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="w-24 shrink-0" />
+            </div>
+
+            <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const ri = virtualRow.index
+                const r = filtered[ri]
+                const isoCol = columns.find(cl => cl.toLowerCase() === 'iso') || 'ISO'
                 const isRetiro = String(r['GESTIÓN'] || '').trim().toUpperCase() === 'RETIRO'
                 const isDup = !isRetiro && isoCounts[(r[isoCol] || '').trim().toLowerCase()] > 1
+                
                 return (
-                  <tr key={ri} className={`transition-colors group ${isDup ? 'bg-red-500/10 hover:bg-red-500/20' : ri % 2 === 0 ? 'bg-black/5 dark:bg-white/5 hover:bg-blue-500/10 dark:hover:bg-blue-400/10' : 'hover:bg-blue-500/10 dark:hover:bg-blue-400/10'}`}>
-                    <td className="p-1 text-center text-[9px] font-bold border-r relative" style={{ color: isDup ? '#ef4444' : TC.textSub, borderBottom: `1px solid ${isDup ? 'rgba(239,68,68,0.3)' : TC.borderSoft}`, borderColor: isDup ? 'rgba(239,68,68,0.3)' : TC.borderSoft }}>
+                  <div
+                    key={virtualRow.key}
+                    className={`absolute top-0 left-0 w-full flex text-[11px] font-mono group ${isDup ? 'bg-red-500/10' : ri % 2 === 0 ? 'bg-black/5 dark:bg-white/5' : ''} hover:bg-blue-500/10 dark:hover:bg-blue-400/10`}
+                    style={{
+                      height: `${virtualRow.size}px`,
+                      transform: `translateY(${virtualRow.start}px)`,
+                      borderBottom: `1px solid ${isDup ? 'rgba(239,68,68,0.3)' : TC.borderSoft}`
+                    }}
+                  >
+                    <div className="w-8 p-1.5 text-center text-[9px] font-bold border-r shrink-0 flex items-center justify-center relative" style={{ color: isDup ? '#ef4444' : TC.textSub, borderColor: isDup ? 'rgba(239,68,68,0.3)' : TC.borderSoft }}>
                       {isDup && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-red-500" />}
                       {ri + 1}
-                    </td>
+                    </div>
+
                     {vCols.map((c, ci) => {
-                      // Determine if cell is selected
                       let isSelected = false
                       let isMultipleSelected = false
                       if (selection.start && selection.end) {
@@ -581,89 +640,80 @@ export default function TabDashboard({
                       }
                       
                       return (
-                        <td 
+                        <div 
                           key={c} 
-                          className="p-0 border-r last:border-r-0 relative" 
-                          style={{ borderBottom: `1px solid ${isDup ? 'rgba(239,68,68,0.3)' : TC.borderSoft}`, borderColor: isDup ? 'rgba(239,68,68,0.3)' : TC.borderSoft }}
+                          className="flex-1 border-r min-w-[120px] relative overflow-hidden" 
+                          style={{ borderColor: isDup ? 'rgba(239,68,68,0.3)' : TC.borderSoft }}
                           onMouseDown={() => handleMouseDown(ri, ci)}
                           onMouseEnter={() => handleMouseEnter(ri, ci)}
                         >
                           <div className={`absolute inset-0 pointer-events-none transition-colors duration-75 ${isSelected ? 'bg-blue-500/20 mix-blend-multiply dark:mix-blend-screen ring-1 ring-inset ring-blue-500/50' : ''}`} />
-                          <input
-                            id={`cell-${ri}-${ci}`}
-                            type="text"
-                            // If multiple selected, disable pointer events on input so drag works smoothly over text
-                            className={`w-full px-2 py-2 text-[11px] font-mono bg-transparent outline-none transition-all placeholder-opacity-20 focus:backdrop-blur-md focus:bg-white/5 dark:focus:bg-white/5 focus:ring-1 focus:ring-inset focus:ring-blue-500 ${isMultipleSelected ? 'pointer-events-none selection:bg-transparent cursor-default text-inherit' : ''}`}
-                            style={{ color: TC.text, border: 'none' }}
-                            value={r[c] || ''}
-                            onChange={e => onUpdateCell(ri, c, e.target.value)}
-                            onFocus={() => {
-                               // when tabbing or clicking, align selection correctly if not dragging
-                               if (!isDragging && !isMultipleSelected) {
+                          
+                          {(!isSelected || isMultipleSelected) && search.trim() ? (
+                            <div className="w-full px-2 py-2 truncate transition-all text-[11px] font-mono" style={{ color: TC.text }}>
+                              {highlightText(r[c] || '', search)}
+                            </div>
+                          ) : (
+                            <input
+                              id={`cell-${ri}-${ci}`}
+                              type="text"
+                              className={`w-full h-full px-2 py-0 bg-transparent outline-none transition-all placeholder-opacity-20 focus:backdrop-blur-md focus:bg-white/5 dark:focus:bg-white/5 focus:ring-1 focus:ring-inset focus:ring-blue-500 ${isMultipleSelected ? 'pointer-events-none selection:bg-transparent cursor-default text-inherit' : ''} text-[11px] font-mono`}
+                              style={{ color: TC.text, border: 'none' }}
+                              value={r[c] || ''}
+                              onChange={e => onUpdateCell(ri, c, e.target.value)}
+                              onFocus={() => {
+                                if (!isDragging && !isMultipleSelected) {
                                   setSelection({ start: {r: ri, c: ci}, end: {r: ri, c: ci} })
-                               }
-                            }}
-                            onKeyDown={e => {
-                               const focusCell = (r: number, c: number) => {
-                                  const el = document.getElementById(`cell-${r}-${c}`)
+                                }
+                              }}
+                              autoComplete="off"
+                              onKeyDown={e => {
+                                const focusCell = (r_idx: number, c_idx: number) => {
+                                  const el = document.getElementById(`cell-${r_idx}-${c_idx}`)
                                   if (el) {
                                       el.focus()
-                                      setSelection({ start: {r, c}, end: {r, c} })
+                                      setSelection({ start: {r: r_idx, c: c_idx}, end: {r: r_idx, c: c_idx} })
                                       return true
                                   }
                                   return false
-                               }
-                               if (!e.shiftKey) {
-                                  if (e.key === 'ArrowUp') {
-                                     e.preventDefault()
-                                     focusCell(ri - 1, ci)
-                                  } else if (e.key === 'ArrowDown' || e.key === 'Enter') {
-                                     e.preventDefault()
-                                     focusCell(ri + 1, ci)
-                                  } else if (e.key === 'ArrowLeft') {
-                                     if (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) {
-                                        e.preventDefault()
-                                        focusCell(ri, ci - 1)
-                                     }
+                                }
+                                if (!e.shiftKey) {
+                                  if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(ri - 1, ci) }
+                                  else if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); focusCell(ri + 1, ci) }
+                                  else if (e.key === 'ArrowLeft') {
+                                    if (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) { e.preventDefault(); focusCell(ri, ci - 1) }
                                   } else if (e.key === 'ArrowRight') {
-                                     if (e.currentTarget.selectionStart === e.currentTarget.value.length && e.currentTarget.selectionEnd === e.currentTarget.value.length) {
-                                        e.preventDefault()
-                                        focusCell(ri, ci + 1)
-                                     }
+                                    if (e.currentTarget.selectionStart === e.currentTarget.value.length && e.currentTarget.selectionEnd === e.currentTarget.value.length) { e.preventDefault(); focusCell(ri, ci + 1) }
                                   }
-                               }
-                            }}
-                            readOnly={isMultipleSelected} // Only block editing if multiple are selected
-                          />
-                        </td>
+                                }
+                              }}
+                              readOnly={isMultipleSelected}
+                            />
+                          )}
+                        </div>
                       )
-                  })}
-                  <td className="p-0" style={{ borderBottom: `1px solid ${TC.borderSoft}` }}>
-                    <button
-                      onClick={() => onDeleteRow(ri)}
-                      className="w-full h-full min-h-[28px] flex items-center justify-center opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                      style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px' }}
-                      title="Eliminar fila"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </td>
-                </tr>
+                    })}
+
+                    <div className="w-24 px-1 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity sticky right-0 bg-inherit z-10 border-l" style={{ borderColor: TC.borderSoft }}>
+                      <button onClick={() => handleCycleGestion(ri)} className="p-1 hover:bg-blue-500/20 text-blue-400 rounded-md transition-colors" title="Cambiar Gestión"><ArrowDownAZ size={10} /></button>
+                      <button onClick={() => handleDuplicateRow(ri)} className="p-1 hover:bg-green-500/20 text-green-400 rounded-md transition-colors" title="Duplicar Fila"><Plus size={10} /></button>
+                      <button onClick={() => onDeleteRow(ri)} className="p-1 hover:bg-red-500/20 text-red-400 rounded-md transition-colors" title="Eliminar fila"><Trash2 size={10} /></button>
+                    </div>
+                  </div>
                 )
               })}
-              <tr>
-                <td colSpan={vCols.length + 2} className="p-0">
-                  <button
-                    onClick={onAddRow}
-                    className="w-full text-left px-3 py-2 text-[11px] font-semibold transition-colors hover:bg-blue-500/5 hover:text-blue-400 flex items-center gap-1"
-                    style={{ color: TC.textFaint, background: 'transparent', border: 'none', cursor: 'pointer' }}
-                  >
-                    <Plus size={12} /> Nueva fila
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+            </div>
+            
+            <div className="p-2 border-t" style={{ borderColor: TC.borderSoft }}>
+               <button
+                  onClick={onAddRow}
+                  className="w-full text-left px-3 py-2 text-[11px] font-semibold transition-colors hover:bg-blue-500/5 hover:text-blue-400 flex items-center gap-1"
+                  style={{ color: TC.textFaint, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                >
+                  <Plus size={12} /> Nueva fila
+                </button>
+            </div>
+          </div>
         )}
       </div>
 

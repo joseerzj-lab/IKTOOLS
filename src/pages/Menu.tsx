@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Route, Truck, BarChart2, BarChart3, Clock, MapPin,
+  Route, Truck, BarChart2, Clock, MapPin,
   Search, CheckSquare, ExternalLink,
   Package, Settings
 } from 'lucide-react'
@@ -75,7 +75,7 @@ const APPS: AppInfo[] = [
   },
   {
     id: 'isos-geo',
-    title: 'Consultar ISOs Sin Asignacion',
+    title: 'ISOs Sin Asignación (Geo)',
     description: 'Visualización geográfica de ISOs faltantes y análisis de cobertura por zona.',
     path: '/isos-geo',
     icon: <MapPin className="h-5 w-5" />,
@@ -95,7 +95,7 @@ const APPS: AppInfo[] = [
   },
   {
     id: 'vehiculos',
-    title: 'Consultar Entrega de Vehículos',
+    title: 'Entrega de Vehículos',
     description: 'Control y verificación de flota vehicular, capacidades y asignaciones activas.',
     path: '/vehiculos',
     icon: <Package className="h-5 w-5" />,
@@ -108,7 +108,7 @@ const APPS: AppInfo[] = [
     title: 'Actualizar OTIF',
     description: 'Procesamiento de OTIF proyectado, pivote de ParentOrder y conteo de LPN por estado.',
     path: '/otif',
-    icon: <BarChart3 className="h-5 w-5" />,
+    icon: <BarChart2 className="h-5 w-5" />,
     tag: 'Operaciones',
     tagColor: 'text-[#3fb950] bg-[#3fb950]/10 border-[#3fb950]/20',
     area: 'md:col-span-1 lg:col-span-1'

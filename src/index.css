@@ -134,6 +134,10 @@ body {
 
   --ar-progress-bg:  rgba(255,255,255,0.07);
   --ar-scrollbar:    rgba(255,255,255,0.1) transparent;
+
+  --ikea-blue:       #0058a3;
+  --ikea-yellow:     #ffdb00;
+  --ikea-dark:       #111111;
 }
 
 .light {
@@ -321,6 +325,10 @@ body {
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  --color-ikea-blue: var(--ikea-blue);
+  --color-ikea-yellow: var(--ikea-yellow);
+  --color-ikea-dark: var(--ikea-dark);
 }
 
 @layer base {
@@ -351,8 +359,10 @@ body {
 /* Copy glow */
 .ik-copy-glow { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(.92); background: rgba(63, 185, 80, .12); border: 1px solid #3fb950; color: #3fb950; font-weight: 700; font-size: 13px; padding: 10px 26px; border-radius: 9px; z-index: 99999; pointer-events: none; opacity: 0; transition: opacity .18s, transform .18s; backdrop-filter: blur(8px); box-shadow: 0 0 32px rgba(63, 185, 80, .28); }
 .ik-copy-glow.ik-glow-show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+@keyframes pulse {
   from { opacity: 0.3; }
-  to { opacity: 0.8; }
+  to { opacity: 1; }
 }
 
 @keyframes flowRed {

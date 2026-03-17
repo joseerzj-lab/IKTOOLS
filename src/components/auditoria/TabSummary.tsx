@@ -30,7 +30,7 @@ function exportXLSX(rows: SummaryRow[]) {
   const wsData = [['ISO', 'Vehículo', 'Dirección', 'Observación', 'Detalle', 'Estado']]
   for (const r of rows) {
     wsData.push([r.iso, r.veh, r.dir || '', r.obs || '', r.detalle || '',
-      r.status === 'revisado' ? 'Revisado' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'])
+      r.status === 'resuelto' ? 'Resuelto' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'])
   }
   const ws = W.utils.aoa_to_sheet(wsData)
   ws['!cols'] = [{wch:14},{wch:20},{wch:45},{wch:20},{wch:55},{wch:14}]
@@ -45,7 +45,7 @@ function copyToClipboard(rows: SummaryRow[]) {
   let rich = `<table style="border-collapse:collapse"><tr><th style="${hS}">ISO</th><th style="${hS}">Vehículo</th><th style="${hS}">Dirección</th><th style="${hS}">Observación</th><th style="${hS}">Detalle</th><th style="${hS}">Estado</th></tr>`
   let plain = 'ISO\tVehículo\tDirección\tObservación\tDetalle\tEstado\n'
   for (const r of rows) {
-    const estado = r.status === 'revisado' ? 'Revisado' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'
+    const estado = r.status === 'resuelto' ? 'Resuelto' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'
     rich += `<tr><td style="${tS}font-weight:700">${escHtml(r.iso)}</td><td style="${tS}">${escHtml(r.veh)}</td><td style="${tS}">${escHtml(r.dir||'')}</td><td style="${tS}">${escHtml(r.obs||'')}</td><td style="${tS}">${escHtml(r.detalle||'')}</td><td style="${tS}">${estado}</td></tr>`
     plain += `${r.iso}\t${r.veh}\t${r.dir||''}\t${r.obs||''}\t${r.detalle||''}\t${estado}\n`
   }
@@ -55,10 +55,10 @@ function copyToClipboard(rows: SummaryRow[]) {
   } catch { navigator.clipboard.writeText(plain) }
 }
 
-type StatusFilter = 'all' | 'pendiente' | 'alerta' | 'revisado'
+type StatusFilter = 'all' | 'pendiente' | 'alerta' | 'resuelto'
 type TypeFilter   = 'all' | 'geo' | 'fuera' | 'ambos'
 
-export default function TabSummary({ rows }: Props) {
+export default function TabSummary({ rows, onResolve, onFlag }: Props) {
   const [search, setSearch]           = useState('')
   const [typeFilter, setTypeFilter]   = useState<TypeFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -79,7 +79,7 @@ export default function TabSummary({ rows }: Props) {
     let r = rows.filter(row => {
       if (typeFilter !== 'all' && row.tipo !== typeFilter) return false
       if (statusFilter !== 'all') {
-        const s = row.status === 'aprobado' ? 'revisado' : row.status
+        const s = row.status === 'aprobado' ? 'resuelto' : row.status
         if (s !== statusFilter) return false
       }
       if (search) {
@@ -152,7 +152,7 @@ export default function TabSummary({ rows }: Props) {
             const key = COLS[j].key
             let val = (row as any)[key] ?? ''
             if (key === 'status') {
-              val = row.status === 'revisado' ? 'Revisado' : row.status === 'aprobado' ? 'Aprobado' : row.status === 'alerta' ? 'Alerta' : 'Pendiente'
+              val = row.status === 'resuelto' ? 'Resuelto' : row.status === 'aprobado' ? 'Aprobado' : row.status === 'alerta' ? 'Alerta' : 'Pendiente'
             }
             rowCells.push(val)
         }
@@ -189,8 +189,8 @@ export default function TabSummary({ rows }: Props) {
               options={[
                 { key: 'all',       label: 'Todos' },
                 { key: 'pendiente', label: '⏳ Pendiente' },
-                { key: 'alerta',    label: '⚠ Alerta' },
-                { key: 'revisado',  label: '✓ Revisado' },
+                { key: 'alerta',    label: 'Alerta' },
+                {key: 'resuelto',  label: '✓ Resuelto' },
               ]}
             />
           </>
@@ -219,7 +219,7 @@ export default function TabSummary({ rows }: Props) {
           </thead>
           <tbody>
             {visible.map((r, i) => {
-              const isRes = r.status === 'revisado' || r.status === 'aprobado'
+              const isRes = r.status === 'resuelto' || r.status === 'aprobado'
               const isFlg = r.status === 'alerta'
 
               const tipoEl = r.tipo === 'fuera'
@@ -228,19 +228,48 @@ export default function TabSummary({ rows }: Props) {
                   ? <Badge variant="high">FR + CI</Badge>
                   : <Badge variant="blue">C. Incorrecta</Badge>
 
-              const statusEl = isRes
-                ? <span style={{ color: C.green, fontWeight: 800, fontSize: T.base }}>✓ {r.status === 'aprobado' ? 'Aprobado' : 'Revisado'}</span>
-                : isFlg
-                  ? <span style={{ color: C.red, fontWeight: 800, fontSize: T.base }}>⚠ Alerta</span>
-                  : <span style={{ color: C.orange, fontWeight: 800, fontSize: T.base }}>⏳ Pendiente</span>
+              const riskIcon = (r.riskLevel === 'high') ? '⚠️ ' : ''
+
+              const statusEl = (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  {isRes 
+                    ? <span style={{ color: C.green, fontWeight: 800, fontSize: T.base }}>✓ {r.status === 'aprobado' ? 'Aprobado' : 'Resuelto'}</span>
+                    : isFlg
+                      ? <span style={{ color: C.red, fontWeight: 800, fontSize: T.base }}>Alerta</span>
+                      : <span style={{ color: C.orange, fontWeight: 800, fontSize: T.base }}>⏳ Pendiente</span>
+                  }
+                  
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                    <Btn 
+                      variant={isRes ? 'success' : 'secondary'} 
+                      size="xs" 
+                      onClick={(e) => { e.stopPropagation(); onResolve(r.iso, r.aKey, r.tipo, !isRes) }}
+                      title={isRes ? 'Reabrir' : 'Marcar como resuelto'}
+                    >
+                      {isRes ? '↩' : '✓'}
+                    </Btn>
+                    <Btn 
+                      variant={isFlg ? 'danger' : 'secondary'} 
+                      size="xs" 
+                      onClick={(e) => { e.stopPropagation(); onFlag(r.iso, r.aKey, r.tipo, !isFlg) }}
+                      title={isFlg ? 'Quitar alerta' : 'Marcar Alerta'}
+                    >
+                      {isFlg ? '✕' : 'Alerta'}
+                    </Btn>
+                  </div>
+                </div>
+              )
 
               return (
                 <tr key={r.iso + i}
                   onMouseUp={() => { setIsSelecting(false); if (selectionStart && selectionEnd) handleCopySelection() }}
                   style={{
-                    opacity: isRes ? 0.45 : 1,
-                    background: i % 2 === 0 ? 'transparent' : 'var(--ar-bg-hover)',
-                    transition: 'opacity 0.2s',
+                    opacity: isRes ? 0.5 : 1,
+                    background: isFlg 
+                      ? 'rgba(239, 68, 68, 0.08)' 
+                      : (i % 2 === 0 ? 'transparent' : 'var(--ar-bg-hover)'),
+                    transition: 'all 0.2s',
+                    borderLeft: isFlg ? `3px solid ${C.red}` : `3px solid transparent`,
                   }}>
                   <td style={{ ...td, textAlign: 'center', color: C.text, fontWeight: 700, fontSize: T.sm, background: 'var(--ar-bg-card)', borderRight: `1px solid ${C.border}` }}>{i + 1}</td>
 
@@ -261,9 +290,9 @@ export default function TabSummary({ rows }: Props) {
                         }}
                         title={String((r as any)[col.key] ?? '')}
                       >
-                        {col.key === 'status' ? statusEl : 
-                         col.key === 'obs' ? (
+                        {col.key === 'status' ? statusEl :                          col.key === 'obs' ? (
                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                             {riskIcon && <span title="Riesgo Alto">{riskIcon}</span>}
                              {tipoEl}
                              <span style={{ color: C.textMuted, fontSize: T.sm }}>{r.obs}</span>
                            </div>
