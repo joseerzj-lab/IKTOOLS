@@ -12,7 +12,6 @@ import TabProjects from '../components/ruteo-postventa/TabProjects'
 import type { Row, Stats, TabKey } from '../components/ruteo-postventa/types'
 import * as XLSX from 'xlsx'
 import { compress, decompress } from 'lz-string'
-import { parseDelimitedText } from '../utils/parsing'
 
 const normalizeHeader = (h: string) => 
   h.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")

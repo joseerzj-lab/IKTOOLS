@@ -61,7 +61,7 @@ export interface SummaryRow {
   obs: string
   detalle: string
   tipo: 'geo' | 'fuera' | 'ambos'
-  status: 'pendiente' | 'alerta' | 'resuelto' | 'aprobado'
+  status: 'pendiente' | 'alerta' | 'resuelto' | 'revisado' | 'aprobado'
   geoISO: string | null
   aKey: string | null
   riskLevel: 'low' | 'medium' | 'high' | null
