@@ -51,39 +51,17 @@ export default function TabLoad({
     if (lines.length < 1) return
 
     const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
-    const rawHeaders = lines[0].split(sep).map(sanH)
     
-    // Legacy mapping aliases
-    const hasIso = rawHeaders.includes("ISO")
-    const hasVeh = rawHeaders.includes("VEH") || rawHeaders.includes("VEHICULO")
-    const hasOri = rawHeaders.includes("ORIGEN")
-    const hasCom = rawHeaders.includes("COMENTARIO") || rawHeaders.includes("COMENTARIOS")
-
-    let finalRows: string[][] = []
-    let finalHeaders: string[] = []
-
-    if (hasIso || hasVeh || hasOri || hasCom) {
-      // Use headers
-      finalHeaders = rawHeaders
-      finalRows = lines.slice(1).map(l => l.split(sep))
-    } else {
-      // No headers detected, use fixed 4-column mapping (1:ISO, 2:VEH, 3:COM, 4:ORI)
-      finalHeaders = ['ISO', 'VEH', 'COMENTARIO_RAW', 'ORIGEN']
-      finalRows = lines.map(l => l.split(sep))
-    }
-
-    const data = finalRows.map(row => {
-      const r: Record<string, string> = {}
-      finalHeaders.forEach((h, i) => {
-        r[h] = row[i] ? row[i].trim().toUpperCase() : ""
-      })
-
-      const iso = r['ISO']
+    // Fixed positional mapping as requested:
+    // Input 0: ISO, Input 1: VEH, Input 2: COM, Input 3: ORIGEN
+    const data = lines.map(line => {
+      const row = line.split(sep)
+      const iso = (row[0] || "").trim().toUpperCase()
       if (!iso) return null
-      
-      const com = (r['COMENTARIO'] || r['COMENTARIOS'] || r['COMENTARIO_RAW'] || "").toUpperCase()
-      const veh = (r['VEH'] || r['VEHICULO'] || "").toUpperCase()
-      const ori = r['ORIGEN'] || ""
+
+      const veh = (row[1] || "").trim().toUpperCase()
+      const com = (row[2] || "").trim().toUpperCase()
+      const ori = (row[3] || "").trim().toUpperCase()
       
       let g = "REPITE"
       if (veh) {
@@ -103,14 +81,15 @@ export default function TabLoad({
         'GESTIÓN': g,
         ORIGEN: ori,
         DESTINO: '',
-        VEH: veh,
         'CORREO REPITES': 'SI',
         COMENTARIO_RAW: com,
+        VEH: veh,
         _SOURCE: 'Repites'
       }
     }).filter(Boolean) as Row[]
     
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Repites')
+    // Updated output order: ISO, GESTIÓN, ORIGEN, DESTINO, CORREO REPITES, COMENTARIO_RAW, VEH
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','CORREO REPITES','COMENTARIO_RAW','VEH'], data, 'Repites')
     setPasteRepites('')
   }
 
