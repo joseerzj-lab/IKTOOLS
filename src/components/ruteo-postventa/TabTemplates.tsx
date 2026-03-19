@@ -78,13 +78,21 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
     })
   }
 
+  const sortData = (data: any[]) => {
+    return [...data].sort((a, b) => {
+      const valA = String(a.DESTINO || '').toUpperCase()
+      const valB = String(b.DESTINO || '').toUpperCase()
+      return valA.localeCompare(valB)
+    })
+  }
+
   const handleCopy = (id: string) => {
     let html = ''
     let plain = ''
     let title = ''
 
     if (id === 'repites') {
-      const data = rows.filter(r => String(r['CORREO REPITES']).toUpperCase() === 'SI')
+      const data = sortData(rows.filter(r => String(r['CORREO REPITES']).toUpperCase() === 'SI'))
       if (!data.length) return onNotify('⚠️ No hay filas con CORREO REPITES = SI')
       
       const intro = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-bottom:12px;">Buenas tardes @Despacho Ecommerce WH comparto repites</p>`
@@ -98,7 +106,7 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
         const u = String(v || '').trim().toUpperCase()
         return u.includes('POST VENTA') || u.includes('POSTVENTA')
       }
-      const data = rows.filter(r => isPV(r.DESTINO))
+      const data = sortData(rows.filter(r => isPV(r.DESTINO)))
       if (!data.length) return onNotify('⚠️ Sin datos de POST VENTA en columna DESTINO')
       
       const vehsPV = [...new Set(data.map(r => String(r.DESTINO || '').trim()).filter(Boolean))]
@@ -113,10 +121,10 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
     }
     else if (id === 'leslie') {
       if (!proyectosData.length) return onNotify('⚠️ Sin datos de Proyectos Leslie')
-      const displayRows = proyectosData.filter(r => {
+      const displayRows = sortData(proyectosData.filter(r => {
         const iso = (r.ISO || "").trim().toUpperCase();
         return iso !== 'INICIO' && iso !== 'FIN';
-      })
+      }))
       
       const hoy = new Date()
       const man = new Date(hoy); man.setDate(hoy.getDate() + 1)
@@ -126,8 +134,9 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
         return `${days[d.getDay()]} ${d.getDate()} de ${months[d.getMonth()]} de ${d.getFullYear()}`;
       }
       
+      // Req 6: Primero ISO, luego lo que estaba antes (VEHÍCULO), luego dirección.
       const isDos = proyectosData[0]?._tipo === 'dos'
-      const cols = isDos ? ['VEHÍCULO', 'ISO', 'DIRECCIÓN'] : ['ISO', 'DIRECCIÓN']
+      const cols = isDos ? ['ISO', 'VEHÍCULO', 'DIRECCIÓN'] : ['ISO', 'DIRECCIÓN']
       
       const intro = `<p style="font-family:'Aptos',sans-serif;font-size:12pt;margin-bottom:12px;line-height:1.6;">Hej Team!,<br><br>@Despacho Ecommerce WH Comparto las órdenes correspondientes al flujo de proyectos B2C que realizamos con Transportes Leslie, el día ${fmtDate(man)}. Por favor, solicito su ayuda para procesar estas órdenes y ubicarlas en el andén 2A (Nave 4) para Transportes Leslie, diferenciadas de los envío retiro.</p>`
       const table = buildHTMLTable(displayRows, cols)
@@ -139,7 +148,7 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
       const intro = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-bottom:12px;">Buenas tardes, comparto ruteos PM</p>`
       
       // 1. Repites
-      const dataRepites = rows.filter(r => String(r['CORREO REPITES']).toUpperCase() === 'SI')
+      const dataRepites = sortData(rows.filter(r => String(r['CORREO REPITES']).toUpperCase() === 'SI'))
       let sectionRepites = ''
       if (dataRepites.length) {
         sectionRepites = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">Repites</p>` 
@@ -151,7 +160,7 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
         const u = String(v || '').trim().toUpperCase()
         return u.includes('POST VENTA') || u.includes('POSTVENTA')
       }
-      const dataPV = rows.filter(r => isPV(r.DESTINO))
+      const dataPV = sortData(rows.filter(r => isPV(r.DESTINO)))
       let sectionPV = ''
       if (dataPV.length) {
         sectionPV = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">Postventa</p>`
@@ -160,11 +169,11 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
 
       // 3. K8
       const isK8 = (r: Row) => {
-        const comm = String(r.COMENTARIO || '').toUpperCase()
+        const comm = String(r.COMENTARIO || r.COMENTARIO_RAW || '').toUpperCase()
         const gest = String(r.GESTIÓN || '').toUpperCase()
         return comm.includes('K8') || gest.includes('K8')
       }
-      const dataK8 = rows.filter(isK8)
+      const dataK8 = sortData(rows.filter(isK8))
       let sectionK8 = ''
       if (dataK8.length) {
         sectionK8 = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">K8</p>`
@@ -172,10 +181,7 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
       }
 
       // 4. Proyectos
-      // Logic for driver "Francisco Javier diaz zamora" -> VEH98
-      // Logic for "Proyecto_cocinas" -> VEH98 ADICIONAL
-      // Exclude "Inicio"/"Fin"
-      const dataProy = rows.filter(r => {
+      const dataProy = sortData(rows.filter(r => {
         const cond = String(r.CONDUCTOR || '').trim()
         const iso = String(r.ISO || '').trim().toUpperCase()
         if (iso === 'INICIO' || iso === 'FIN') return false
@@ -186,7 +192,7 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
           ...r,
           DESTINO: cond === 'Francisco Javier diaz zamora' ? 'VEH98' : 'VEH98 ADICIONAL'
         }
-      })
+      }))
       
       let sectionProy = ''
       if (dataProy.length) {
@@ -194,8 +200,24 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
           + buildHTMLTable(dataProy, ['ISO', 'DESTINO'], true)
       }
 
-      html = intro + sectionRepites + sectionPV + sectionK8 + sectionProy
-      plain = `Buenas tardes, comparto ruteos PM\n\nRepites...\nPostventa...\nK8...\nProyectos...`
+      // 5. Corrección de Ruta (Req 4)
+      const dataCorr = sortData(rows.filter(r => {
+        const gest = String(r['GESTIÓN'] || '').toUpperCase()
+        const ori = String(r.ORIGEN || '').toUpperCase()
+        return (gest === 'ENVIO Y RETIRO') && ori !== 'VEH99'
+      }).map(r => ({
+        ...r,
+        'GESTIÓN': 'CORRECCION DE RUTA'
+      })))
+
+      let sectionCorr = ''
+      if (dataCorr.length) {
+        sectionCorr = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">Corrección de Ruta</p>`
+          + buildHTMLTable(dataCorr, ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO'], true)
+      }
+
+      html = intro + sectionRepites + sectionPV + sectionCorr + sectionK8 + sectionProy
+      plain = `Buenas tardes, comparto ruteos PM\n\nRepites...\nPostventa...\nCorrección de Ruta...\nK8...\nProyectos...`
       title = 'Ruteo PM'
     }
 

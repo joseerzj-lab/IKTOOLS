@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Row } from './types'
 import { Card, Btn } from '../../ui/DS'
-import { parseDelimitedText, getRowAsObject, LOGISTICS_COLUMN_MAP } from '../../utils/parsing'
+
 
 interface Props {
   rows: Row[]
@@ -43,49 +43,58 @@ export default function TabLoad({
   const [planCrossFile, setPlanCrossFile] = useState<File | null>(null)
   const [convCrossFile, setConvCrossFile] = useState<File | null>(null)
 
+  const sanH = (h: string) => h.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+
   const procesarRepites = () => {
     if (!pasteRepites.trim()) return
-    const { headers, rows: pRows } = parseDelimitedText(pasteRepites)
-    if (!pRows.length) return
+    const lines = pasteRepites.trim().split('\n')
+    if (lines.length < 1) return
+
+    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
+    const rawHeaders = lines[0].split(sep).map(sanH)
     
-    // Check if first row is headers or data
-    const firstRowObj = getRowAsObject(headers, pRows[0])
-    const hasHeaders = LOGISTICS_COLUMN_MAP.iso.some(alias => firstRowObj[alias])
-    
-    let finalRows = pRows
-    let finalHeaders = headers
-    
-    if (!hasHeaders) {
-      // Assume standard format: ISO, VEH, ORIGIN, COMMENT
-      finalHeaders = ['ISO', 'VEH', 'ORIGIN', 'COMENTARIO_RAW']
-      finalRows = [headers, ...pRows] // Include the "header" line as data
+    // Legacy mapping aliases
+    const hasIso = rawHeaders.includes("ISO")
+    const hasVeh = rawHeaders.includes("VEH") || rawHeaders.includes("VEHICULO")
+    const hasOri = rawHeaders.includes("ORIGEN")
+    const hasCom = rawHeaders.includes("COMENTARIO") || rawHeaders.includes("COMENTARIOS")
+
+    let finalRows: string[][] = []
+    let finalHeaders: string[] = []
+
+    if (hasIso || hasVeh || hasOri || hasCom) {
+      // Use headers
+      finalHeaders = rawHeaders
+      finalRows = lines.slice(1).map(l => l.split(sep))
+    } else {
+      // No headers detected, use fixed 4-column mapping (1:ISO, 2:VEH, 3:COM, 4:ORI)
+      finalHeaders = ['ISO', 'VEH', 'COMENTARIO_RAW', 'ORIGEN']
+      finalRows = lines.map(l => l.split(sep))
     }
 
     const data = finalRows.map(row => {
-      const r = getRowAsObject(finalHeaders, row)
-      
-      const findVal = (aliases: string[]) => {
-        const key = aliases.find(a => r[a] !== undefined)
-        return key ? String(r[key]).trim() : ""
-      }
+      const r: Record<string, string> = {}
+      finalHeaders.forEach((h, i) => {
+        r[h] = row[i] ? row[i].trim().toUpperCase() : ""
+      })
 
-      const iso = findVal(LOGISTICS_COLUMN_MAP.iso)
+      const iso = r['ISO']
       if (!iso) return null
       
-      const com = findVal(LOGISTICS_COLUMN_MAP.comentario).toUpperCase()
-      const veh = findVal(LOGISTICS_COLUMN_MAP.vehiculo).toUpperCase()
-      const ori = findVal(LOGISTICS_COLUMN_MAP.direccion) || findVal(LOGISTICS_COLUMN_MAP.comuna)
+      const com = (r['COMENTARIO'] || r['COMENTARIOS'] || r['COMENTARIO_RAW'] || "").toUpperCase()
+      const veh = (r['VEH'] || r['VEHICULO'] || "").toUpperCase()
+      const ori = r['ORIGEN'] || ""
       
       let g = "REPITE"
       if (veh) {
         const eyr = (com.includes("ENVIO") && com.includes("RETIRO")) || com.includes("ENVIO Y RETIRO")
-        const legacySolo = com.includes("SOLO ENVIO") || com.includes("SOLO ENVÍO")
+        const solo = com.includes("SOLO ENVIO") || com.includes("SOLO ENVÍO")
         
         if (veh.includes("PROYECTO LESLIE")) g = "REPITE PROYECTO"
-        else if (veh.includes("LESLIE")) g = eyr ? "ENVIO Y RETIRO" : legacySolo ? "SOLO ENVIO" : "REPITE LESLIE"
+        else if (veh.includes("LESLIE")) g = eyr ? "ENVIO Y RETIRO" : solo ? "SOLO ENVIO" : "REPITE LESLIE"
         else {
           if (eyr) g = "ENVIO Y RETIRO"
-          else if (legacySolo) g = "SOLO ENVIO"
+          else if (solo) g = "SOLO ENVIO"
         }
       }
       
@@ -107,15 +116,20 @@ export default function TabLoad({
 
   const procesarRetiros = () => {
     if (!pasteRetiros.trim()) return
-    const { headers, rows: pRows } = parseDelimitedText(pasteRetiros)
-    if (!pRows.length) return
+    const lines = pasteRetiros.trim().split('\n')
+    if (lines.length < 1) return
+    
+    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
+    const rawHeaders = lines[0].split(sep).map(sanH)
+    const cIsoIdx = rawHeaders.findIndex(h => h.includes("ISO") || h.includes("UNIDAD") || h.includes("ID"))
+    if (cIsoIdx === -1) return
     
     const seen = new Set()
     const data: Row[] = []
     
-    pRows.forEach(row => {
-      const r = getRowAsObject(headers, row)
-      const iso = (r['iso'] || r['unidad'] || r['id'] || '').trim().toUpperCase()
+    lines.slice(1).forEach(line => {
+      const v = line.split(sep)
+      const iso = (v[cIsoIdx] || '').trim().toUpperCase()
       if (!iso || seen.has(iso)) return
       seen.add(iso)
       data.push({
@@ -136,15 +150,20 @@ export default function TabLoad({
 
   const procesarEyRPaso1 = () => {
     if (!pasteEyR.trim()) return
-    const { headers, rows: pRows } = parseDelimitedText(pasteEyR)
-    if (!pRows.length) return
+    const lines = pasteEyR.trim().split('\n')
+    if (lines.length < 1) return
+    
+    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
+    const rawHeaders = lines[0].split(sep).map(sanH)
+    const cIsoIdx = rawHeaders.findIndex(h => h.includes("ASO GENERADA") || h.includes("ASO") || h.includes("ISO"))
+    if (cIsoIdx === -1) return
     
     const isosGeneradas: string[] = []
     const newRows: Row[] = []
     
-    pRows.forEach(row => {
-      const r = getRowAsObject(headers, row)
-      const isoVal = (r['aso generada'] || r['aso'] || r['iso'] || '').trim().toUpperCase()
+    lines.slice(1).forEach(line => {
+      const v = line.split(sep)
+      const isoVal = (v[cIsoIdx] || '').trim().toUpperCase()
       if (isoVal) {
         newRows.push({
           ISO: isoVal,

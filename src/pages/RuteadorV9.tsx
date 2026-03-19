@@ -36,9 +36,9 @@ export default function RuteadorV9() {
   const [columns, setColumns] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('r9-cols')
-      const parsed = saved ? JSON.parse(saved) : ['ISO', 'GESTIÓN', 'COMUNA', 'ESTADO', 'VEH', 'ORIGEN', 'COMENTARIO_RAW']
+      const parsed = saved ? JSON.parse(saved) : ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'VEH', 'CORREO REPITES', 'COMENTARIO_RAW']
       return parsed.filter((c: string) => c !== 'Commerce')
-    } catch { return ['ISO', 'GESTIÓN', 'COMUNA', 'ESTADO', 'VEH', 'ORIGEN', 'COMENTARIO_RAW'] }
+    } catch { return ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'VEH', 'CORREO REPITES', 'COMENTARIO_RAW'] }
   })
   const [rows, setRows] = useState<Row[]>(() => {
     try {
@@ -192,9 +192,23 @@ export default function RuteadorV9() {
         })
         
         const isos = pvRows.map(r => String(r[cTit] || "")).filter(iso => iso && iso !== "INICIO" && iso !== "FIN")
+        
+        // Populate proyectosData for Leslie template (Req 3)
+        const cDir = keys.find(k => k.includes("DIRECCI") || k.includes("DOMICILIO"))
+        const formattedProy = pvRows.filter(r => {
+          const iso = String(r[cTit] || "").trim().toUpperCase()
+          return iso && iso !== "INICIO" && iso !== "FIN"
+        }).map(r => ({
+          _tipo: 'dos',
+          'VEHÍCULO': String(r[cVeh || ''] || ""),
+          ISO: String(r[cTit] || "").trim().toUpperCase(),
+          DIRECCIÓN: String(r[cDir || ''] || "")
+        }))
+
         setPvPlanData(isos)
         setPvPlanName(file.name)
-        flash(`✓ ${isos.length} ISOs de Postventa cargadas`)
+        setProyectosData(formattedProy)
+        flash(`✓ ${isos.length} ISOs de Postventa cargadas (y enviadas a Leslie)`)
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer el plan') }
