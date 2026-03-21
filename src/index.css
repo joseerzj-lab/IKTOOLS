@@ -121,6 +121,7 @@ body {
   --ar-bg-surface:   rgba(255,255,255,0.035);
   --ar-bg-header:    rgba(13,17,23,0.9);
   --ar-bg-detail:    rgba(0,0,0,0.25);
+  --ar-bg-sidebar:   rgba(22,27,34,0.85);
 
   --ar-border:       rgba(255,255,255,0.07);
   --ar-border-soft:  rgba(255,255,255,0.04);
@@ -149,6 +150,7 @@ body {
   --ar-bg-surface:   rgba(0,0,0,0.03);
   --ar-bg-header:    rgba(246,248,250,0.95);
   --ar-bg-detail:    rgba(0,0,0,0.04);
+  --ar-bg-sidebar:   rgba(255,255,255,0.95);
 
   --ar-border:       rgba(0,0,0,0.10);
   --ar-border-soft:  rgba(0,0,0,0.06);
@@ -173,6 +175,7 @@ body {
   --ar-bg-surface: rgba(255, 0, 0, 0.05);
   --ar-bg-header: rgba(15, 0, 0, 0.98);
   --ar-bg-detail: rgba(30, 0, 0, 0.4);
+  --ar-bg-sidebar: rgba(26, 0, 0, 0.85);
 
   --ar-border: rgba(255, 0, 0, 0.3);
   --ar-border-soft: rgba(255, 0, 0, 0.15);
@@ -186,6 +189,31 @@ body {
 
   --ar-progress-bg: rgba(255, 0, 0, 0.1);
   --ar-scrollbar: rgba(255, 0, 0, 0.3) transparent;
+}
+
+.landscape {
+  --ar-bg:           transparent;
+  --ar-bg-card:      rgba(255, 255, 255, 0.12);
+  --ar-bg-card-alt:  rgba(255, 255, 255, 0.08);
+  --ar-bg-hover:     rgba(255, 255, 255, 0.15);
+  --ar-bg-active:    rgba(255, 255, 255, 0.2);
+  --ar-bg-surface:   rgba(255, 255, 255, 0.05);
+  --ar-bg-header:    rgba(0, 0, 0, 0.25);
+  --ar-bg-detail:    rgba(0, 0, 0, 0.3);
+  --ar-bg-sidebar:   rgba(255, 255, 255, 0.1);
+
+  --ar-border:       rgba(255, 255, 255, 0.25);
+  --ar-border-soft:  rgba(255, 255, 255, 0.15);
+  --ar-border-bar:   rgba(255, 255, 255, 0.2);
+
+  --ar-text:         #ffffff;
+  --ar-text-sub:     rgba(255, 255, 255, 0.9);
+  --ar-text-muted:   rgba(255, 255, 255, 0.7);
+  --ar-text-faint:   rgba(255, 255, 255, 0.5);
+  --ar-text-disabled:rgba(255, 255, 255, 0.3);
+
+  --ar-progress-bg:  rgba(255, 255, 255, 0.1);
+  --ar-scrollbar:    rgba(255, 255, 255, 0.2) transparent;
 }
 
 /* Apply scrollbar colors based on theme */

@@ -182,7 +182,7 @@ function CommuneSection({ comuna, isos, pct, rl, isApproved, onResolve, vindex, 
       style={{ margin: '4px 8px', borderRadius: R.lg, overflow: 'hidden', ...glass.row }}
     >
       {/* Commune header */}
-      <button
+      <div
         onClick={() => setOpen(o => !o)}
         style={{
           width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
@@ -231,7 +231,7 @@ function CommuneSection({ comuna, isos, pct, rl, isApproved, onResolve, vindex, 
             }}>Resuelto</button>
           ) : null}
         </div>
-      </button>
+      </div>
 
       {/* ISO list */}
       <AnimatePresence initial={false}>
@@ -309,8 +309,8 @@ function VehicleCard({ veh, comunas, riskResult, resolvedRisk, onResolveRisk, on
         transition: 'all 0.3s'
       }}
     >
-      {/* Vehicle header button */}
-      <button
+      {/* Vehicle header container */}
+      <div
         onClick={onToggleExpand}
         style={{
           width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer',
@@ -390,7 +390,7 @@ function VehicleCard({ veh, comunas, riskResult, resolvedRisk, onResolveRisk, on
             {isExcluded ? 'Incluir' : 'Excluir'}
           </button>
         </div>
-      </button>
+      </div>
 
       {/* Communes */}
       <AnimatePresence initial={false}>

@@ -1,8 +1,10 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme, getThemeColors } from '../../context/ThemeContext'
 import { C, T, R } from '../../ui/DS'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useTableSelection } from '../../hooks/useTableSelection'
+import { Image as ImageIcon } from 'lucide-react'
+import ImageModal from '../ui/ImageModal'
 
 type ISORow = {
   iso: string
@@ -11,6 +13,8 @@ type ISORow = {
   estado: string
   comentario: string
   motivo: string
+  imageUrl: string
+  direccion: string
 }
 
 interface Props {
@@ -29,7 +33,7 @@ function getEstadoClass(e: string): { bg: string; color: string } {
   return { bg: 'rgba(240,136,62,0.15)', color: '#f0883e' }
 }
 
-const HEADERS = ['ISO', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega']
+const HEADERS = ['ISO', 'Dirección', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega', 'Fotos']
 
 export default function TabResultados({ results, onCopiar }: Props) {
   const { theme } = useTheme()
@@ -39,6 +43,29 @@ export default function TabResultados({ results, onCopiar }: Props) {
   const tableRef = useRef<HTMLTableElement>(null)
   
   useTableSelection(tableRef)
+
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalImages, setModalImages] = useState<string[]>([])
+
+  const openPhotos = (urlStr: string) => {
+    if (!urlStr) return
+    const urls = urlStr.split(',')
+      .map(s => s.trim().replace(/^[\[\]"']+|[\[\]"']+$/g, '').trim())
+      .filter(s => s.startsWith('http'))
+      
+    if (urls.length > 0) {
+      setModalImages(urls)
+      setModalOpen(true)
+    } else {
+      const fallbackUrls = urlStr.split(',')
+        .map(s => s.trim().replace(/^[\[\]"']+|[\[\]"']+$/g, '').trim())
+        .filter(Boolean)
+      if (fallbackUrls.length > 0) {
+        setModalImages(fallbackUrls)
+        setModalOpen(true)
+      }
+    }
+  }
 
   return (
     <div style={{
@@ -150,6 +177,12 @@ export default function TabResultados({ results, onCopiar }: Props) {
                             }}>NO HALLADO</span>
                           )}
                         </td>
+                        <td style={{
+                          padding: '8px 14px',
+                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                          color: TC.textSub, borderBottom: `1px solid ${TC.border}`,
+                          maxWidth: 200, fontSize: T.sm,
+                        }}>{r.direccion}</td>
                         <td style={{ padding: '8px 14px', borderBottom: `1px solid ${TC.border}` }}>
                           {r.estado && (
                             <span style={{
@@ -173,6 +206,22 @@ export default function TabResultados({ results, onCopiar }: Props) {
                           color: TC.text, borderBottom: `1px solid ${TC.border}`,
                           maxWidth: 300, fontSize: T.base,
                         }}>{r.motivo}</td>
+                        <td style={{ padding: '8px 14px', borderBottom: `1px solid ${TC.border}` }}>
+                          {r.imageUrl && r.imageUrl.trim().length > 0 ? (
+                            <button 
+                              onClick={() => openPhotos(r.imageUrl)}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                padding: '4px 10px', background: '#3b82f6', color: 'white',
+                                borderRadius: '6px', fontSize: 11, fontWeight: 'bold', border: 'none', cursor: 'pointer'
+                              }}
+                            >
+                              <ImageIcon size={14} /> Ver Fotos
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 11, color: TC.textFaint }}>Sin fotos</span>
+                          )}
+                        </td>
                       </motion.tr>
                     )
                   })}
@@ -182,6 +231,12 @@ export default function TabResultados({ results, onCopiar }: Props) {
           </div>
         </>
       )}
+
+      <ImageModal 
+        isOpen={modalOpen} 
+        onClose={() => setModalOpen(false)} 
+        images={modalImages} 
+      />
     </div>
   )
 }

@@ -31,14 +31,17 @@ function getFechaHoy() {
   return `${String(f.getDate()).padStart(2, '0')}-${String(f.getMonth() + 1).padStart(2, '0')}-${f.getFullYear()}`
 }
 
-function readFile(file: File): Promise<any[]> {
+function readFile(file: File, sheetName?: string): Promise<any[]> {
   return new Promise((res, rej) => {
     const reader = new FileReader()
     reader.onload = e => {
       try {
         const data = e.target?.result
         const wb = XLSX.read(data, { type: 'binary' })
-        const ws = wb.Sheets[wb.SheetNames[0]]
+        let ws = wb.Sheets[wb.SheetNames[0]]
+        if (sheetName && wb.Sheets[sheetName]) {
+          ws = wb.Sheets[sheetName]
+        }
         res(XLSX.utils.sheet_to_json(ws, { defval: '' }))
       } catch (err) { rej(err) }
     }
@@ -144,7 +147,7 @@ export default function Ruteo24h() {
 
     try {
       const [rowsISOs, rowsPlan, rowsConv] = await Promise.all([
-        readFile(filesPost.isos), readFile(filesPost.plan), readFile(filesPost.conv)
+        readFile(filesPost.isos), readFile(filesPost.plan), readFile(filesPost.conv, 'Plan')
       ])
       addLog(`Leídos - ISOs: ${rowsISOs.length} | Plan: ${rowsPlan.length} | Conversión: ${rowsConv.length}`, 'info')
 
@@ -202,7 +205,7 @@ export default function Ruteo24h() {
         return PS_VEHS.has(v) || v.includes('POST') || v.includes('POSTVENTA')
       }
 
-      const postSalesRows = resultado.filter(r => r._found && isPostSales(r))
+      const postSalesRows = resultado.filter(r => r._found && isPostSales(r)).map(r => ({ ...r, vehFin: 'VEH99' }))
       const restoRows = resultado.filter(r => r._found && !isPostSales(r))
 
       setPostResult({ allRows: resultado, postSalesRows, restoRows, matched })
@@ -216,20 +219,17 @@ export default function Ruteo24h() {
     }
   }
 
-  const handlePostExport = (type: 'preola' | 'post_sales' | 'resto') => {
+  const handlePostExport = (type: 'preola' | 'post_sales') => {
     if (!postResult) return addLog('Procesa el Post Ruteo primero', 'warn')
     let rows: any[] = []
     let name = ''
 
     if (type === 'preola') {
-      rows = postResult.allRows.filter(r => r._found && r.dofi).map(r => ({ A: r.dofi, B: r.vehFin }))
+      rows = postResult.restoRows.filter(r => r.dofi).map(r => ({ A: r.dofi, B: r.vehFin }))
       name = `PREOLA ROUTE TO ${getFechaHoy()} entregas ${getFechaMañana()}.xlsx`
     } else if (type === 'post_sales') {
       rows = postResult.postSalesRows.filter(r => r.dofi).map(r => ({ A: r.dofi, B: r.vehFin }))
       name = `POST SALES ROUTE TO ${getFechaHoy()} entregas ${getFechaMañana()}.xlsx`
-    } else {
-      rows = postResult.restoRows.filter(r => r.dofi).map(r => ({ A: r.dofi, B: r.vehFin }))
-      name = `RESTO ROUTE TO ${getFechaHoy()} entregas ${getFechaMañana()}.xlsx`
     }
 
     if (!rows.length) return addLog(`Sin filas para exportar (${type})`, 'warn')
@@ -281,7 +281,7 @@ export default function Ruteo24h() {
                 <h2 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: TC.textDisabled }}>2. Post-Routing</h2>
                 <Card style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div>
-                    <div className="text-[11px] font-semibold mb-2" style={{ color: TC.textSub }}>1. ISOs Ruteadas <span className="text-red-500">*</span></div>
+                    <div className="text-[11px] font-semibold mb-2" style={{ color: TC.textSub }}>1. Ruteo formato Simpliroute <span className="text-red-500">*</span></div>
                     <label className="flex items-center gap-3 w-full p-3 rounded-lg border hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors" style={{ borderColor: TC.borderSoft, background: TC.bg }}>
                       <FileSpreadsheet size={16} color={TC.textFaint} />
                       <span className="text-xs truncate flex-1" style={{ color: TC.text }}>{filesPost.isos?.name || 'Subir ISOs...'}</span>
@@ -358,7 +358,6 @@ export default function Ruteo24h() {
                 <div className="grid grid-cols-1 gap-3">
                   <Btn variant="primary" onClick={() => handlePostExport('preola')} disabled={!postResult} style={{ justifyContent: 'flex-start', padding: '12px 18px', background: '#f0883e', borderColor: '#f0883e' }}><Download size={16} /> Preola Completa</Btn>
                   <Btn onClick={() => handlePostExport('post_sales')} disabled={!postResult} style={{ justifyContent: 'flex-start', padding: '12px 18px' }}><Download size={16} /> Solo Post Sales</Btn>
-                  <Btn onClick={() => handlePostExport('resto')} disabled={!postResult} style={{ justifyContent: 'flex-start', padding: '12px 18px' }}><Download size={16} /> Resto</Btn>
                 </div>
               </Card>
             </div>

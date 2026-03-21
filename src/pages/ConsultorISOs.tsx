@@ -4,13 +4,15 @@ import { getThemeColors, useTheme } from '../context/ThemeContext'
 import { PageShell } from '../ui/DS'
 import GlassHeader, { GlassHeaderTab } from '../components/ui/GlassHeader'
 import TabCargarArchivo from '../components/consultor/TabCargarArchivo'
+import TabExplorar from '../components/consultor/TabExplorar'
 import TabConsultar from '../components/consultor/TabConsultar'
 import TabResultados, { ISORow } from '../components/consultor/TabResultados'
 
 const ISO_TABS: GlassHeaderTab[] = [
-  { id: 'tab-cargar',     label: 'Base Recibida', icon: '📥', badgeVariant: 'blue'   },
-  { id: 'tab-consultar',  label: 'Consulta',      icon: '🔍', badgeVariant: 'orange' },
-  { id: 'tab-resultados', label: 'Match',         icon: '✅', badgeVariant: 'green'  },
+  { id: 'tab-cargar',     label: 'Base Recibida',          icon: '📥', badgeVariant: 'blue'   },
+  { id: 'tab-explorar',   label: 'Consultar ISO',          icon: '🗂️', badgeVariant: 'purple' },
+  { id: 'tab-consultar',  label: 'Consultar Pendientes',   icon: '🔍', badgeVariant: 'orange' },
+  { id: 'tab-resultados', label: 'Match',                  icon: '✅', badgeVariant: 'green'  },
 ]
 
 /* ── helpers ── */
@@ -40,6 +42,7 @@ export default function ConsultorISOs() {
   const [activeTab, setActiveTab] = useState<string>('tab-cargar')
 
   const [allData, setAllData] = useState<Map<string, any>>(new Map())
+  const [rawRows, setRawRows] = useState<any[]>([])
   const [fileStats, setFileStats] = useState<{ total: number; ikea: number } | null>(null)
   const [fileName, setFileName] = useState('')
   const [isoInput, setIsoInput] = useState('')
@@ -60,29 +63,40 @@ export default function ConsultorISOs() {
       const sep = detectSep(firstLine)
       const lines = text.split('\n').filter(l => l.trim())
       if (lines.length < 2) return
-      const headers = parseRow(lines[0], sep).map(h => h.trim().replace(/^"|"$/g, ''))
+      const cols = parseRow(lines[0], sep).map(h => h.trim().replace(/^"|"$/g, ''))
+      // Create a unique header array to avoid duplicate names in raw mapping
+      const headers = cols.map((col, idx) => col || `Column_${idx}`)
       const idx = (name: string) => headers.findIndex(h => h.toLowerCase() === name.toLowerCase())
-      const iCommerce = idx('commerce'), iParent = idx('parentorder'), iEstado = idx('estado'), iCom = idx('comentarionoentrega'), iMot = idx('motivonoentrega')
+      const iCommerce = idx('commerce'), iParent = idx('parentorder'), iEstado = idx('estado'), iCom = idx('comentarionoentrega'), iMot = idx('motivonoentrega'), iImg = idx('imageurl'), iDir = idx('direccion')
       if (iCommerce === -1 || iParent === -1) {
         flash('⚠ Error: Faltan columnas Commerce o ParentOrder')
         return
       }
 
       const map = new Map<string, any>()
+      const parsedRawRows = []
       let ikeaCount = 0
       for (let i = 1; i < lines.length; i++) {
         const cols = parseRow(lines[i], sep).map(c => c.trim().replace(/^"|"$/g, ''))
         if ((cols[iCommerce] || '').toUpperCase().trim() !== 'IKEA') continue
+        
+        const rh: any = {}
+        headers.forEach((h, hi) => rh[h] = cols[hi] || '')
+        parsedRawRows.push(rh)
+
         ikeaCount++
         const key = (cols[iParent] || '').trim().toLowerCase()
         map.set(key, {
           parentOrder: cols[iParent] || '',
           estado: iEstado !== -1 ? (cols[iEstado] || '') : '',
           comentario: iCom !== -1 ? (cols[iCom] || '') : '',
-          motivo: iMot !== -1 ? (cols[iMot] || '') : ''
+          motivo: iMot !== -1 ? (cols[iMot] || '') : '',
+          imageUrl: iImg !== -1 ? (cols[iImg] || '') : '',
+          direccion: iDir !== -1 ? (cols[iDir] || '') : ''
         })
       }
       setAllData(map)
+      setRawRows(parsedRawRows)
       setFileStats({ total: lines.length - 1, ikea: ikeaCount })
       setFileName(file.name)
       flash('✓ Archivo cargado correctamente')
@@ -98,7 +112,7 @@ export default function ConsultorISOs() {
     const res: ISORow[] = isos.map(iso => {
       const row = allData.get(iso.toLowerCase())
       if (row) return { iso, found: true, ...row }
-      return { iso, found: false, parentOrder: iso, estado: '', comentario: '', motivo: '' }
+      return { iso, found: false, parentOrder: iso, estado: '', comentario: '', motivo: '', imageUrl: '', direccion: '' }
     })
     setResults(res)
     setActiveTab('tab-resultados')
@@ -106,16 +120,17 @@ export default function ConsultorISOs() {
 
   const copiarTabla = () => {
     if (!results.length) return
-    const headers = ['ISO', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega']
+    const headers = ['ISO', 'Dirección', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega']
     let tsv = headers.join('\t') + '\n'
     results.forEach(r => {
-      tsv += [r.iso + (!r.found ? ' [NO HALLADO]' : ''), r.estado, r.comentario, r.motivo].join('\t') + '\n'
+      tsv += [r.iso + (!r.found ? ' [NO HALLADO]' : ''), r.direccion, r.estado, r.comentario, r.motivo].join('\t') + '\n'
     })
     navigator.clipboard?.writeText(tsv).then(() => flash('✓ Tabla copiada al portapapeles'))
   }
 
   const clearData = () => {
     setAllData(new Map())
+    setRawRows([])
     setFileStats(null)
     setFileName('')
     setIsoInput('')
@@ -137,6 +152,7 @@ export default function ConsultorISOs() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         badges={{
+          'tab-explorar': rawRows.length > 0 ? rawRows.length : 0,
           'tab-consultar': isoInput.trim() ? isoInput.split(/[\n\r,;\t ]+/).filter(Boolean).length : 0,
           'tab-resultados': results.length || 0,
         }}
@@ -154,6 +170,19 @@ export default function ConsultorISOs() {
               className="absolute inset-0 overflow-y-auto"
             >
               <TabCargarArchivo fileStats={fileStats} fileName={fileName} onFile={handleFile} onClear={clearData} />
+            </motion.div>
+          )}
+
+          {activeTab === 'tab-explorar' && (
+            <motion.div
+              key="tab-explorar"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
+              transition={{ duration: 0.2 }}
+              className="absolute inset-0 overflow-y-auto"
+            >
+              <TabExplorar rawRows={rawRows} />
             </motion.div>
           )}
 

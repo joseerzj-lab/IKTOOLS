@@ -27,6 +27,12 @@ const mapNormalizedRows = (rows: any[]) => {
   })
 }
 
+const reorderCols = (cols: string[]) => {
+  const fixed = ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO']
+  const rest = cols.filter(c => !fixed.includes(c))
+  return [...fixed.filter(f => cols.includes(f)), ...rest]
+}
+
 export default function RuteadorV9() {
   const { theme } = useTheme()
   const TC = getThemeColors(theme)
@@ -37,7 +43,7 @@ export default function RuteadorV9() {
     try {
       const saved = localStorage.getItem('r9-cols')
       const parsed = saved ? JSON.parse(saved) : ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'VEH', 'CORREO REPITES', 'COMENTARIO_RAW']
-      return parsed.filter((c: string) => c !== 'Commerce')
+      return reorderCols(parsed.filter((c: string) => c !== 'Commerce'))
     } catch { return ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'VEH', 'CORREO REPITES', 'COMENTARIO_RAW'] }
   })
   const [rows, setRows] = useState<Row[]>(() => {
@@ -98,7 +104,7 @@ export default function RuteadorV9() {
 
   const onMergeRows = (newCols: string[], newRows: Row[], source: string) => {
     const mergedCols = [...new Set([...columns, ...newCols])]
-    setColumns(mergedCols)
+    setColumns(reorderCols(mergedCols))
     setRows(prev => [...prev, ...newRows])
     
     // Ensure new columns are visible
@@ -112,9 +118,9 @@ export default function RuteadorV9() {
   }
 
   const onLoadJSON = (cols: string[], rows: Row[]) => {
-    setColumns(cols)
+    setColumns(reorderCols(cols))
     setRows(rows)
-    setVisibleCols(new Set(cols))
+    setVisibleCols(new Set(reorderCols(cols)))
     flash('✓ Sesión cargada correctamente')
   }
 
@@ -138,8 +144,8 @@ export default function RuteadorV9() {
 
   const crearNueva = () => {
     const defaultCols = ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'CORREO REPITES']
-    setColumns(defaultCols)
-    setVisibleCols(new Set(defaultCols))
+    setColumns(reorderCols(defaultCols))
+    setVisibleCols(new Set(reorderCols(defaultCols)))
     
     // Add one empty row so the table structure is visible
     const newRow: Row = {}
@@ -214,62 +220,7 @@ export default function RuteadorV9() {
     } catch (err) { flash('⚠️ Error al leer el plan') }
   }
 
-  const handleConversionUpload = async (file: File) => {
-    try {
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer)
-        const workbook = XLSX.read(data, { type: 'array' })
-        const sheetName = workbook.SheetNames.find(n => n.trim().toLowerCase() === 'plan') || workbook.SheetNames[0]
-        const xlRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' }) as any[]
-        
-        if (!xlRows.length) return flash('⚠️ Archivo de conversión vacío')
-        
-        const headers = Object.keys(xlRows[0] || {})
-        const norm2 = (s: string) => s.trim().toLowerCase().replace(/[áàä]/g,'a').replace(/[éèë]/g,'e').replace(/[íìï]/g,'i').replace(/[óòö]/g,'o').replace(/[úùü]/g,'u')
-        const colIni = headers.find(h => norm2(h).includes('veh') && norm2(h).includes('inic'))
-        const colFin = headers.find(h => norm2(h).includes('veh') && norm2(h).includes('fin'))
-        
-        if (!colIni || !colFin) return flash('⚠️ No se detectaron columnas Vehículo Inicial/Vehículo Final')
-        
-        let mapCount = 0
-        const vehMap = new Map<string,string>()
-        xlRows.forEach(r => { 
-          const ini = String(r[colIni] || '').trim()
-          if (ini) {
-             vehMap.set(ini.toLowerCase(), String(r[colFin] || '').trim() || ini) 
-             mapCount++
-          }
-        })
-        
-        let updated = 0
-        setRows(prev => {
-           const vehCol = columns.find(c => norm2(c).includes('veh'))
-           if (!vehCol) {
-             flash('⚠️ La tabla no tiene una columna de vehículo a convertir')
-             return prev
-           }
-           return prev.map(r => {
-              const v = String(r[vehCol] || '').trim()
-              if (v && vehMap.has(v.toLowerCase())) {
-                  const newVal = vehMap.get(v.toLowerCase())!
-                  if (newVal !== v) {
-                      updated++
-                      return { ...r, [vehCol]: newVal }
-                  }
-              }
-              return r
-           })
-        })
-        if (updated > 0) {
-            flash(`✓ ${updated} vehículos convertidos (${mapCount} reglas)`)
-        } else {
-            flash(`ℹ️ Ningún vehículo coincidió para conversión (${mapCount} reglas)`)
-        }
-      }
-      reader.readAsArrayBuffer(file)
-    } catch (err) { flash('⚠️ Error al leer conversión') }
-  }
+
 
   const handleProjectsUpload = async (file: File) => {
     try {
@@ -428,67 +379,7 @@ export default function RuteadorV9() {
     }
   }
 
-  const handleRuteoUpload = async (file: File) => {
-    try {
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        const data = new Uint8Array(e.target?.result as ArrayBuffer)
-        const workbook = XLSX.read(data, { type: 'array' })
-        const sheetName = workbook.SheetNames[0]
-        const xlRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' }) as any[]
-        
-        if (!xlRows.length) return flash('⚠️ Archivo de Ruteo vacío')
-        if (!rows.length) return flash('⚠️ Dashboard vacío. Carga datos primero.')
-        
-        const isoGestMap = new Map<string, string>()
-        rows.forEach(r => {
-          if (r.ISO) isoGestMap.set(r.ISO.trim().toUpperCase(), r['GESTIÓN'] || '')
-        })
-        
-        const man = new Date()
-        man.setDate(man.getDate() + 1)
-        const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
-        const fechaStr = `${String(man.getDate()).padStart(2, '0')}-${months[man.getMonth()]}-${String(man.getFullYear()).slice(2)}`
-        
-        const keys = Object.keys(xlRows[0] || {})
-        const colIdRef = keys.find(k => k.replace(/[\s_]/g, '').toUpperCase().includes('IDREFERENCIA') || k.toUpperCase().includes('ID_REFERENCIA'))
-        const colFecha = keys.find(k => k.replace(/[\s_]/g, '').toUpperCase().includes('FECHAPROGRAMADA') || k.toUpperCase().includes('FECHA_PROGRAMADA'))
-        const colIso = keys.find(k => k === "ISO" || k.includes("ISO"))
-        
-        let matched = 0
-        const notFound: string[] = []
-        
-        const output = xlRows.map(r => {
-          const rowCopy = { ...r }
-          const iso = String(colIso ? r[colIso] : Object.values(r)[0] || '').trim().toUpperCase()
-          const gest = isoGestMap.get(iso)
-          
-          if (gest !== undefined) {
-             if (colIdRef) rowCopy[colIdRef] = gest
-             else rowCopy['ID_REFERENCIA'] = gest
-             matched++
-          } else {
-             if (iso) notFound.push(iso)
-          }
-          
-          if (colFecha) rowCopy[colFecha] = fechaStr
-          else rowCopy['FECHA_PROGRAMADA'] = fechaStr
-          
-          return rowCopy
-        })
-        
-        const ws = XLSX.utils.json_to_sheet(output)
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, "RUTEO")
-        XLSX.writeFile(wb, "ISOS RUTEO.xlsx")
-        
-        flash(`✅ Exportado ISOS RUTEO.xlsx (Cruzadas: ${matched})`)
-      }
-      reader.readAsArrayBuffer(file)
-    } catch (err) {
-      flash('⚠️ Error al procesar archivo de Ruteo')
-    }
-  }
+
 
   // ISO mapping for duplicates
   const dashboardIsos = rows.reduce((acc, r) => {
@@ -538,10 +429,8 @@ export default function RuteadorV9() {
                 onLoadJSON={onLoadJSON} 
                 onPVPlanUpload={handlePVPlanUpload}
                 onProjectsUpload={handleProjectsUpload}
-                onConversionUpload={handleConversionUpload}
                 onOriginCross={handleOriginCross}
                 onDestinoCross={handleDestinoCross}
-                onRuteoUpload={handleRuteoUpload}
                 pvPlanName={pvPlanName}
                 projectsName={projectsName}
                 TC={TC}

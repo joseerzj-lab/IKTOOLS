@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useEffect } from 'react'
+import { Search, ArrowUp, ArrowDown } from 'lucide-react'
 import type { SummaryRow } from '../../types/auditoria'
 import {
   PageShell, ScrollArea, Toolbar, SearchInput, FilterPills,
@@ -8,12 +9,10 @@ import {
 
 interface Props {
   rows: SummaryRow[]
-  onResolve: (iso: string, aKey: string | null, tipo: string, resolve: boolean) => void
-  onFlag:    (iso: string, aKey: string | null, tipo: string, flag: boolean) => void
+  onResolve: (iso: string, tipo: string, resolve: boolean) => void
+  onFlag:    (iso: string, tipo: string, flag: boolean) => void
   resolvedConflicts: Set<string>
   flaggedConflicts:  Set<string>
-  resolvedRisk:      Set<string>
-  flaggedRisk:       Set<string>
 }
 
 const STATUS_ORDER: Record<string, number> = { pendiente: 0, alerta: 1, revisado: 2, aprobado: 2 }
@@ -56,23 +55,68 @@ function copyToClipboard(rows: SummaryRow[]) {
 }
 
 type StatusFilter = 'all' | 'pendiente' | 'alerta' | 'resuelto'
-type TypeFilter   = 'all' | 'geo' | 'fuera' | 'ambos'
+type TypeFilter   = 'all' | 'geo'
 
 export default function TabSummary({ rows, onResolve, onFlag }: Props) {
   const [search, setSearch]           = useState('')
   const [typeFilter, setTypeFilter]   = useState<TypeFilter>('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [sortCol, setSortCol]         = useState<string | null>(null)
-  const [sortDir, setSortDir]         = useState<'asc'|'desc'>('asc')
+  const [sortDir, setSortDir]         = useState<1 | -1>(1)
+  const [colFilters, setColFilters]   = useState<Record<string, Set<string>>>({})
+  const [activePopup, setActivePopup] = useState<string | null>(null)
+  const [popupSearch, setPopupSearch] = useState('')
+  const [tempSelected, setTempSelected] = useState<Set<string>>(new Set())
+  const popupRef = useRef<HTMLDivElement>(null)
 
   // Selection state
   const [selectionStart, setSelectionStart] = useState<{row: number, col: number} | null>(null)
   const [selectionEnd,   setSelectionEnd]   = useState<{row: number, col: number} | null>(null)
   const [isSelecting,    setIsSelecting]    = useState(false)
 
-  function toggleSort(col: string) {
-    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortCol(col); setSortDir('asc') }
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (activePopup && popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setActivePopup(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [activePopup])
+
+  const togglePopup = (col: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (activePopup === col) {
+      setActivePopup(null)
+    } else {
+      setActivePopup(col)
+      setPopupSearch('')
+      const uniqueVals = Array.from(new Set(rows.map(r => String((r as any)[col] ?? ''))))
+      setTempSelected(colFilters[col] ? new Set(colFilters[col]) : new Set(uniqueVals))
+    }
+  }
+
+  const applyPopupFilter = (col: string, selectedVals: Set<string>) => {
+    setColFilters(prev => {
+      const next = { ...prev }
+      if (selectedVals.size === 0 || selectedVals.size === Array.from(new Set(rows.map(r => String((r as any)[col] ?? '')))).length) {
+        delete next[col]
+      } else {
+        next[col] = selectedVals
+      }
+      return next
+    })
+    setActivePopup(null)
+  }
+
+  const handleSort = (col: string, dir: 1 | -1 | null) => {
+    if (dir === null) {
+      setSortCol(null)
+    } else {
+      setSortCol(col)
+      setSortDir(dir)
+    }
+    setActivePopup(null)
   }
 
   const visible = useMemo(() => {
@@ -88,21 +132,27 @@ export default function TabSummary({ rows, onResolve, onFlag }: Props) {
       }
       return true
     })
+
+    // Col filters
+    Object.entries(colFilters).forEach(([col, vals]) => {
+      if (vals.size > 0) {
+        r = r.filter(row => vals.has(String((row as any)[col] ?? '')))
+      }
+    })
+
     if (sortCol) {
       r = [...r].sort((a, b) => {
         const va = String((a as any)[sortCol] ?? '').toLowerCase()
         const vb = String((b as any)[sortCol] ?? '').toLowerCase()
-        return sortDir === 'asc' ? va.localeCompare(vb, 'es') : vb.localeCompare(va, 'es')
+        return va < vb ? -sortDir : (va > vb ? sortDir : 0)
       })
     } else {
       r = [...r].sort((a, b) => (STATUS_ORDER[a.status]||0) - (STATUS_ORDER[b.status]||0))
     }
     return r
-  }, [rows, search, sortCol, sortDir, typeFilter, statusFilter])
+  }, [rows, search, sortCol, sortDir, typeFilter, statusFilter, colFilters])
 
   const nGeo   = rows.filter(r => r.tipo === 'geo').length
-  const nFuera = rows.filter(r => r.tipo === 'fuera').length
-  const nAmbos = rows.filter(r => r.tipo === 'ambos').length
   const nPend  = rows.filter(r => r.status === 'pendiente').length
 
   if (!rows.length) return <EmptyState icon="📊" message="Carga un plan y ejecuta los análisis para ver el resumen aquí." />
@@ -178,8 +228,6 @@ export default function TabSummary({ rows, onResolve, onFlag }: Props) {
               options={[
                 { key: 'all',   label: `Todos (${rows.length})` },
                 { key: 'geo',   label: `CI (${nGeo})` },
-                { key: 'fuera', label: `FR (${nFuera})` },
-                { key: 'ambos', label: `FR+CI (${nAmbos})` },
               ]}
             />
             <Divider vertical />
@@ -200,21 +248,108 @@ export default function TabSummary({ rows, onResolve, onFlag }: Props) {
             <SearchInput value={search} onChange={setSearch} placeholder="Buscar ISO, veh, dir…" width={160} />
             <Btn variant="blue" size="sm" onClick={() => copyToClipboard(visible)}>📋 Copiar</Btn>
             <Btn variant="success" size="sm" onClick={() => exportXLSX(visible)}>⬇ Excel</Btn>
+            {Object.keys(colFilters).length > 0 && (
+              <Btn variant="danger" size="sm" onClick={() => setColFilters({})}>✕ Quitar Filtros</Btn>
+            )}
           </>
         }
       />
 
-      <ScrollArea style={{ overflowX: 'auto' }}>
+      <ScrollArea style={{ overflowX: 'auto', position: 'relative' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: T.base, minWidth: 700 }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--ar-bg-card)' }}>
             <tr>
               <th style={{ ...th, width: 32, textAlign: 'center', cursor: 'default' }}>#</th>
-              {COLS.map(col => (
-                <th key={col.key} style={th} onClick={() => toggleSort(col.key)}>
-                  {col.label}
-                  {sortCol === col.key && <span style={{ marginLeft: 4 }}>{sortDir === 'asc' ? '↑' : '↓'}</span>}
-                </th>
-              ))}
+              {COLS.map(col => {
+                const isFiltered = colFilters[col.key] && colFilters[col.key].size > 0
+                return (
+                  <th key={col.key} style={{...th, position: 'relative'}}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span onClick={() => handleSort(col.key, sortDir === 1 ? -1 : 1)} style={{ flex: 1, userSelect: 'none' }}>
+                        {col.label} {sortCol === col.key && <span style={{ marginLeft: 4 }}>{sortDir === 1 ? '↑' : '↓'}</span>}
+                      </span>
+                      <button 
+                        onClick={(e) => togglePopup(col.key, e)}
+                        style={{
+                          background: isFiltered || activePopup === col.key ? '#3b82f6' : 'transparent',
+                          color: isFiltered || activePopup === col.key ? '#fff' : C.textFaint,
+                          border: 'none', borderRadius: 4, padding: 4, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}
+                      >
+                        <Search size={12} />
+                      </button>
+                    </div>
+
+                    {activePopup === col.key && (
+                      <div 
+                        ref={popupRef}
+                        style={{
+                          position: 'absolute', top: '100%', left: 0, marginTop: 4, minWidth: 220,
+                          background: 'var(--ar-bg-card)', border: `1px solid ${C.border}`,
+                          borderRadius: 8, padding: 12, zIndex: 50,
+                          boxShadow: '0 10px 25px rgba(0,0,0,0.5)', cursor: 'default',
+                          textTransform: 'none', fontWeight: 500
+                        }}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                          <Btn size="xs" variant="secondary" onClick={() => handleSort(col.key, 1)} style={{ flex: 1 }}><ArrowUp size={10}/> A-Z</Btn>
+                          <Btn size="xs" variant="secondary" onClick={() => handleSort(col.key, -1)} style={{ flex: 1 }}><ArrowDown size={10}/> Z-A</Btn>
+                          <Btn size="xs" variant="danger" onClick={() => handleSort(col.key, null)} style={{ padding: '0 8px' }}>✕</Btn>
+                        </div>
+                        <input 
+                          type="text" 
+                          placeholder="Buscar..." 
+                          value={popupSearch}
+                          onChange={e => setPopupSearch(e.target.value)}
+                          style={{
+                            width: '100%', padding: '6px 8px', fontSize: 11, marginBottom: 8,
+                            background: 'var(--ar-bg-hover)', border: `1px solid ${C.borderSoft}`,
+                            color: C.text, borderRadius: 4, outline: 'none'
+                          }}
+                          autoFocus
+                        />
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 8, fontSize: 10 }}>
+                          <button onClick={() => {
+                            const uniqueVals = Array.from(new Set(rows.map(r => String((r as any)[col.key] ?? ''))))
+                            setTempSelected(new Set(uniqueVals))
+                          }} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0 }}>Todos</button>
+                          <button onClick={() => setTempSelected(new Set())} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0 }}>Ninguno</button>
+                        </div>
+                        
+                        <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12, fontSize: 11 }} className="custom-scrollbar">
+                          {(() => {
+                            const uniqueVals = Array.from(new Set(rows.map(r => String((r as any)[col.key] ?? '')))).sort()
+                            const filteredVals = uniqueVals.filter(v => v.toLowerCase().includes(popupSearch.toLowerCase()))
+                            
+                            return filteredVals.map(v => (
+                              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={tempSelected.has(v)}
+                                  onChange={(e) => {
+                                    const next = new Set(tempSelected)
+                                    if (e.target.checked) next.add(v)
+                                    else next.delete(v)
+                                    setTempSelected(next)
+                                  }}
+                                />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || '(vacío)'}</span>
+                              </label>
+                            ))
+                          })()}
+                        </div>
+                        
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <Btn variant="blue" size="xs" onClick={() => applyPopupFilter(col.key, tempSelected)} style={{ flex: 1 }}>Aplicar</Btn>
+                          <Btn variant="secondary" size="xs" onClick={() => setActivePopup(null)} style={{ flex: 1 }}>Cancelar</Btn>
+                        </div>
+                      </div>
+                    )}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>
@@ -222,13 +357,9 @@ export default function TabSummary({ rows, onResolve, onFlag }: Props) {
               const isRes = r.status === 'resuelto' || r.status === 'aprobado'
               const isFlg = r.status === 'alerta'
 
-              const tipoEl = r.tipo === 'fuera'
-                ? <Badge variant="medium">Fuera de Ruta</Badge>
-                : r.tipo === 'ambos'
-                  ? <Badge variant="high">FR + CI</Badge>
-                  : <Badge variant="blue">C. Incorrecta</Badge>
+              const tipoEl = <Badge variant="blue">C. Incorrecta</Badge>
 
-              const riskIcon = (r.riskLevel === 'high') ? '⚠️ ' : ''
+              const riskIcon = ''
 
               const statusEl = (
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -243,7 +374,7 @@ export default function TabSummary({ rows, onResolve, onFlag }: Props) {
                     <Btn 
                       variant={isRes ? 'success' : 'secondary'} 
                       size="xs" 
-                      onClick={(e) => { e.stopPropagation(); onResolve(r.iso, r.aKey, r.tipo, !isRes) }}
+                      onClick={(e) => { e.stopPropagation(); onResolve(r.iso, r.tipo, !isRes) }}
                       title={isRes ? 'Reabrir' : 'Marcar como resuelto'}
                     >
                       {isRes ? '↩' : '✓'}
@@ -251,7 +382,7 @@ export default function TabSummary({ rows, onResolve, onFlag }: Props) {
                     <Btn 
                       variant={isFlg ? 'danger' : 'secondary'} 
                       size="xs" 
-                      onClick={(e) => { e.stopPropagation(); onFlag(r.iso, r.aKey, r.tipo, !isFlg) }}
+                      onClick={(e) => { e.stopPropagation(); onFlag(r.iso, r.tipo, !isFlg) }}
                       title={isFlg ? 'Quitar alerta' : 'Marcar Alerta'}
                     >
                       {isFlg ? '✕' : 'Alerta'}

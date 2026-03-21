@@ -79,6 +79,8 @@ export default function TabWrongCommune({
   const [lightMap,     setLightMap]     = useState(false)
   const [copiedId,     setCopiedId]     = useState<string | null>(null)
 
+  const zoomOnFocusRef = useRef(true)
+
   const vehs = useMemo(() => [...new Set(routeData.map(r => r.veh))].sort(), [routeData])
   const vehColors = useMemo(() => {
     const m: Record<string, string> = {}
@@ -114,7 +116,8 @@ export default function TabWrongCommune({
         @keyframes pulse-yellow { 0% { box-shadow:0 0 0 0 rgba(255,218,26,0.7); } 70% { box-shadow:0 0 0 12px rgba(255,218,26,0); } 100% { box-shadow:0 0 0 0 rgba(255,218,26,0); } }
         .marker-conflict { animation: pulse-red 2s infinite; border: 2px solid #fff; }
         .marker-focus { animation: pulse-yellow 2s infinite; border: 3px solid #fff; z-index: 1000 !important; }
-        .commune-label { background: rgba(0,0,0,0.8); border: none; color: #fff; font-weight: 800; font-size: 9px; padding: 2px 6px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); }
+        .commune-background-label { pointer-events: none !important; display: flex; align-items: center; justify-content: center; }
+        .commune-background-label div { font-size: var(--commune-lbl-sz, 16px); font-weight: 900; color: #ffffff; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; text-shadow: 2px 2px 6px rgba(0,0,0,0.9), -1px -1px 4px rgba(0,0,0,0.9); }
         .premium-popup .leaflet-popup-content-wrapper { background: rgba(22,27,33,0.9); backdrop-filter: blur(10px); color: #fff; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); }
         .premium-popup .leaflet-popup-tip { background: rgba(22,27,33,0.9); }
       `
@@ -126,8 +129,28 @@ export default function TabWrongCommune({
       Object.keys(cmData).forEach(k => {
         const d = cmData[k]; if (!d?.p) return
         L.polygon(d.p, { color: '#5b8fd6', weight: 1.5, opacity: 0.4, fillColor: '#1e3a6e', fillOpacity: 0.05, interactive: false }).addTo(map)
+        
+        if (d.c) {
+          const name = d.n || k
+          const icon = L.divIcon({
+            className: 'commune-background-label',
+            html: `<div>${name}</div>`,
+            iconSize: [200, 30],
+            iconAnchor: [100, 15]
+          })
+          L.marker(d.c, { icon, interactive: false, zIndexOffset: -100 }).addTo(map)
+        }
       })
     }
+
+    const updateLabelSize = () => {
+      const z = map.getZoom()
+      const scale = Math.pow(2, z - 13)
+      const px = Math.max(Math.min(22 * scale, 120), 4)
+      document.documentElement.style.setProperty('--commune-lbl-sz', px + 'px')
+    }
+    map.on('zoom', updateLabelSize)
+    updateLabelSize()
   }
 
   useEffect(() => {
@@ -176,6 +199,7 @@ export default function TabWrongCommune({
       const isConf = conflictSet.has(r.iso)
       const isF = r.iso === focusedIso
       const isRes = resolvedConflicts.has(r.iso)
+      const isFlg = flaggedConflicts.has(r.iso)
       const isVehF = focusedVeh ? r.veh === focusedVeh : true
       if (focusedVeh && !isVehF) return
 
@@ -186,40 +210,98 @@ export default function TabWrongCommune({
       const icon = L.divIcon({
         className: '',
         html: `<div class="${cls}" style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};border:1.5px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:900;box-shadow:0 2px 8px rgba(0,0,0,0.4)">${isConf ? (isRes ? '✓' : '!') : ''}</div>`,
-        iconSize: [sz, sz], iconAnchor: [sz/2, sz/2]
+        iconSize: [sz, sz], iconAnchor: [sz/2, sz/2], popupAnchor: [0, -sz/2]
       })
 
       const mk = L.marker([r.lat!, r.lng!], { icon, zIndexOffset: isF ? 1000 : (isConf ? 500 : 0) })
       
-      // Permanent Tooltip for Commune Name
       if (isConf) {
         const c = conflicts.find(x => x.iso === r.iso)
         if (c) {
-          mk.bindTooltip(c.comunaReal, { permanent: true, direction: 'top', offset: [0, -10], className: 'commune-label' })
           mk.bindPopup(`<div style="font-family:sans-serif;font-size:12px;padding:12px;min-width:200px">
               <div style="font-weight:800;font-size:14px;margin-bottom:4px;color:#fff">${r.iso}</div>
-              <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:8px">${r.veh}</div>
+              <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:4px">${r.veh}</div>
+              <div style="color:rgba(255,255,255,0.8);font-size:11px;margin-bottom:8px;line-height:1.3;max-width:260px">${c.dir}</div>
               <div style="margin:8px 0;color:#f87171;font-weight:700;background:rgba(248,81,73,0.1);padding:6px;border-radius:6px;border:1px solid rgba(248,81,73,0.2)">
                 <div style="font-size:9px;text-transform:uppercase;opacity:0.7">Discrepancia</div>
                 ${c.comunaDireccion} → ${c.comunaReal}
               </div>
-              <div style="display:flex;gap:6,marginTop:10">
+              <div style="display:flex;gap:6;margin-top:10px">
                 <button style="background:#238636;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;flex:1;font-weight:800;font-size:11px" onclick="window.dispatchEvent(new CustomEvent('map-resolve', {detail:'${r.iso}'}))">${isRes ? '↩ Reabrir' : '✓ Resolver'}</button>
+                <button style="background:#f87171;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;flex:1;font-weight:800;font-size:11px" onclick="window.dispatchEvent(new CustomEvent('map-flag', {detail:'${r.iso}'}))">${isFlg ? '✕ Quitar Alerta' : '⚠ Alertar'}</button>
               </div>
-            </div>`, { className: 'premium-popup' })
+            </div>`, { className: 'premium-popup', autoPan: false })
         }
       }
       
-      mk.on('click', () => { setFocusedIso(r.iso) })
+      mk.on('click', () => { 
+        zoomOnFocusRef.current = false
+        setFocusedIso(r.iso) 
+      })
       mk.addTo(map)
       markersRef.current.push(mk)
+
+      // Cuando recreamos los marcadores (por cambio de focusedIso), forzamos
+      // a que el marcador actualmente enfocado despliegue su mini card (popup)
+      if (isF && isConf) {
+        setTimeout(() => {
+          if (mapRef.current) mk.openPopup()
+        }, 50)
+      }
     })
   }, [routeData, conflicts, resolvedConflicts, vehColors, conflictSet, focusedIso])
 
   useEffect(() => {
-    const cb = (e: any) => onToggleResolve(e.detail)
-    window.addEventListener('map-resolve', cb); return () => window.removeEventListener('map-resolve', cb)
-  }, [onToggleResolve])
+    const resCb = (e: any) => onToggleResolve(e.detail)
+    const flgCb = (e: any) => onToggleFlag(e.detail)
+    window.addEventListener('map-resolve', resCb)
+    window.addEventListener('map-flag', flgCb)
+    return () => {
+      window.removeEventListener('map-resolve', resCb)
+      window.removeEventListener('map-flag', flgCb)
+    }
+  }, [onToggleResolve, onToggleFlag])
+
+  // Center route on ISO select
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !routeData.length) return
+    const L = (window as any).L
+    if (!L) return
+
+    if (!focusedIso) {
+      // Return to full RM panorama
+      const pts = routeData.filter(r => r.lat !== null && r.lng !== null)
+      if (pts.length > 0) {
+        let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity
+        for (let i = 0; i < pts.length; i++) {
+          const pLat = pts[i].lat!
+          const pLng = pts[i].lng!
+          if (pLat < minLat) minLat = pLat
+          if (pLat > maxLat) maxLat = pLat
+          if (pLng < minLng) minLng = pLng
+          if (pLng > maxLng) maxLng = pLng
+        }
+        map.flyToBounds([
+          [minLat, minLng],
+          [maxLat, maxLng]
+        ], { padding: [40, 40], duration: 0.8, maxZoom: 11 })
+      } else {
+        map.flyTo([-33.45, -70.65], 11, { duration: 0.8 })
+      }
+      return
+    }
+
+    const routePt = routeData.find(r => r.iso === focusedIso)
+    if (routePt && routePt.lat !== null && routePt.lng !== null) {
+      if (zoomOnFocusRef.current) {
+        const targetPt = map.project([routePt.lat, routePt.lng], 15)
+        targetPt.y -= 140
+        const shiftedLatLng = map.unproject(targetPt, 15)
+        map.flyTo(shiftedLatLng, 15, { duration: 0.6 })
+      }
+    }
+  }, [focusedIso, routeData])
 
   const visible = useMemo(() => conflicts.filter(c => {
     if (excludedVehicles.has(c.veh)) return false
@@ -231,7 +313,26 @@ export default function TabWrongCommune({
       return c.iso.toLowerCase().includes(lo) || c.veh.toLowerCase().includes(lo) || c.comunaDireccion.toLowerCase().includes(lo)
     }
     return true
-  }), [conflicts, resolvedConflicts, flaggedConflicts, statusFilter, search])
+  }), [conflicts, resolvedConflicts, flaggedConflicts, statusFilter, search, excludedVehicles])
+
+  const exportVisible = () => {
+    const W = (window as any).XLSX; if (!W) return alert('XLSX no disponible')
+    const wb = W.utils.book_new()
+    const wsData = [['ISO', 'Vehículo', 'Dirección', 'Comuna Dirección', 'Comuna Real', 'Estado']]
+    for (const c of visible) {
+      const res = resolvedConflicts.has(c.iso); const flg = flaggedConflicts.has(c.iso)
+      const st = res ? 'Resuelto' : (flg ? 'Alerta' : 'Pendiente')
+      wsData.push([c.iso, c.veh, c.dir, c.comunaDireccion, c.comunaReal, st])
+    }
+    const ws = W.utils.aoa_to_sheet(wsData)
+    ws['!cols'] = [{wch:14},{wch:20},{wch:45},{wch:22},{wch:22},{wch:12}]
+    W.utils.book_append_sheet(wb, ws, 'Conflictos Filtrados')
+    
+    const d = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const ts = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`
+    W.writeFile(wb, `conflictos_filtrados_${ts}.xlsx`)
+  }
 
   if (!hasData) return <EmptyState icon="📍" message="Carga un plan primero" />
   if (!isReady) return <EmptyState icon="⚙️" message="Cargando datos..." />
@@ -241,7 +342,8 @@ export default function TabWrongCommune({
       <div style={{ borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', background:'var(--ar-bg-sidebar)', backdropFilter:'blur(20px)' }}>
         <div style={{ padding:'16px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, background:'var(--ar-bg-header)' }}>
           <div style={{ flex:1 }}><span style={{ fontSize:22, fontWeight:950, color:C.red, letterSpacing:'-0.02em' }}>{conflicts.length}</span> <span style={{ fontSize:10, fontWeight:800, color:C.textMuted, textTransform:'uppercase' }}>Conflictos</span></div>
-          <div style={{ display:'flex', gap:6 }}>
+          <div style={{ display:'flex', gap:6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <Btn variant="secondary" size="xs" onClick={exportVisible}>⬇ Exportar</Btn>
             <Btn variant="blue" size="xs" onClick={onRunAnalysis}>Analizar</Btn>
             <Btn variant="success" size="xs" onClick={() => onResolveAll(conflicts.filter(c=>!excludedVehicles.has(c.veh)).map(c=>c.iso), [])}>Todo ✓</Btn>
             <Btn variant="danger" size="xs" onClick={() => onFlagAll(conflicts.filter(c=>!excludedVehicles.has(c.veh)).map(c=>c.iso), [])}>Todo ✕</Btn>
@@ -275,7 +377,10 @@ export default function TabWrongCommune({
             ]} 
           />
         </div>
-        <div style={{ flex:1, overflowY:'auto', padding:'8px' }} className="custom-scrollbar">
+        <div 
+          style={{ flex:1, overflowY:'scroll', padding:'8px' }} 
+          className="custom-scrollbar"
+        >
           {visible.map((c, idx) => {
             const isF = focusedIso === c.iso
             const isRes = resolvedConflicts.has(c.iso)
@@ -289,7 +394,10 @@ export default function TabWrongCommune({
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: idx * 0.02 }}
-                onClick={() => setFocusedIso(c.iso === focusedIso ? null : c.iso)} 
+                onClick={() => {
+                  zoomOnFocusRef.current = true
+                  setFocusedIso(c.iso === focusedIso ? null : c.iso)
+                }} 
                 style={{ 
                   padding:'14px', 
                   borderRadius: R.xl,

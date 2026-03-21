@@ -142,6 +142,8 @@ export function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
     borderRadius: R.lg,
     border: `1px solid ${C.border}`,
     background: C.bgCard,
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
     overflow: 'hidden',
     ...extra,
   }

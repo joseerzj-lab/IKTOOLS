@@ -1235,15 +1235,15 @@ export default function ReporteRutas() {
                           new Date().toLocaleDateString(),
                           vehicles.length,
                           isosReal,
-                          (isosReal / vehicles.length).toFixed(2),
+                          (isosReal / vehicles.length).toFixed(2).replace('.', ','),
                           '',
                           '',
                           miniVehicles.length,
                           isosMini,
-                          miniVehicles.length ? (isosMini / miniVehicles.length).toFixed(2) : '0.00',
+                          miniVehicles.length ? (isosMini / miniVehicles.length).toFixed(2).replace('.', ',') : '0,00',
                           camionVehicles.length,
                           isosCamion,
-                          camionVehicles.length ? (isosCamion / camionVehicles.length).toFixed(2) : '0.00'
+                          camionVehicles.length ? (isosCamion / camionVehicles.length).toFixed(2).replace('.', ',') : '0,00'
                         ]
                         
                         navigator.clipboard.writeText(row.join('\t')).then(() => flash('✓ Datos copiados (Info solamente)'))
@@ -1286,15 +1286,15 @@ export default function ReporteRutas() {
                                   <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{new Date().toLocaleDateString()}</td>
                                   <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{vehicles.length}</td>
                                   <td className="p-4 border-b font-black" style={{ borderColor: TC.borderSoft, color: '#0ea5e9' }}>{isosReal}</td>
-                                  <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{(isosReal / vehicles.length).toFixed(2)}</td>
+                                  <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{(isosReal / vehicles.length).toFixed(2).replace('.', ',')}</td>
                                   <td className="p-4 border-b bg-black/5 dark:bg-white/5" style={{ borderColor: TC.borderSoft }}>-</td>
                                   <td className="p-4 border-b bg-black/5 dark:bg-white/5" style={{ borderColor: TC.borderSoft }}>-</td>
                                   <td className="p-4 border-b" style={{ borderColor: TC.borderSoft, color: '#a855f7' }}>{miniVehicles.length}</td>
                                   <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{isosMini}</td>
-                                  <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{miniVehicles.length ? (isosMini / miniVehicles.length).toFixed(2) : '0.00'}</td>
+                                  <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{miniVehicles.length ? (isosMini / miniVehicles.length).toFixed(2).replace('.', ',') : '0,00'}</td>
                                   <td className="p-4 border-b" style={{ borderColor: TC.borderSoft, color: '#f97316' }}>{camionVehicles.length}</td>
                                   <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{isosCamion}</td>
-                                  <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{camionVehicles.length ? (isosCamion / camionVehicles.length).toFixed(2) : '0.00'}</td>
+                                  <td className="p-4 border-b" style={{ borderColor: TC.borderSoft }}>{camionVehicles.length ? (isosCamion / camionVehicles.length).toFixed(2).replace('.', ',') : '0,00'}</td>
                                 </tr>
                               )
                             })()}

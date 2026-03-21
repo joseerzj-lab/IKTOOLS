@@ -1,15 +1,13 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Route, Truck, BarChart2, Clock, MapPin,
-  Search, CheckSquare, ExternalLink,
+  Search, CheckSquare,
   Package, Settings
 } from 'lucide-react'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
 import { T, R } from '../ui/DS'
-import { GlowingEffect } from '../components/ui/glowing-effect'
-import { cn } from '../lib/utils'
+import { ResourceCardsGrid } from '../components/ui/resource-cards-grid'
 
 interface AppInfo {
   id: string
@@ -115,15 +113,6 @@ const APPS: AppInfo[] = [
   },
 ]
 
-const container = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.06 } },
-}
-
-const item = {
-  hidden: { opacity: 0, y: 16 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.35 } },
-}
 
 export default function Menu() {
   const { theme, toggle, isDark, setTheme } = useTheme()
@@ -266,74 +255,17 @@ export default function Menu() {
         </motion.div>
 
         {/* App grid */}
-        <motion.ul
-          variants={container}
-          initial="hidden"
-          animate="show"
-          className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-5"
-        >
-          {APPS.map((app) => (
-            <motion.li variants={item} key={app.id} className={cn("list-none h-full", app.area)}>
-              <Link to={app.path} className="block w-full h-full cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/50 rounded-[1.5rem] outline-none group pb-2">
-                <div className="relative h-full rounded-[1.25rem] border-[0.75px] md:rounded-[1.5rem] p-2 hover:bg-black/5 dark:hover:bg-white/5 transition-all outline-none" style={{ borderColor: TC.borderSoft }}>
-                  <GlowingEffect 
-                    spread={40} 
-                    glow={true} 
-                    disabled={false} 
-                    proximity={64} 
-                    inactiveZone={0.01} 
-                    borderWidth={3} 
-                  />
-                  <div className="relative flex h-full flex-col justify-between overflow-hidden rounded-xl border-[0.75px] p-6 shadow-sm transition-all md:p-6" 
-                      style={{ 
-                        background: TC.bgCard, 
-                        borderColor: TC.border,
-                        boxShadow: isDark ? '0px 0px 27px 0px rgba(45,45,45,0.1)' : '0 2px 10px rgba(0,0,0,0.05)'
-                      }}>
-                    <div className="relative flex flex-1 flex-col justify-between gap-5">
-                      
-                      {/* Top Header: Icon and Tag */}
-                      <div className="flex items-start justify-between">
-                        <div className="w-fit rounded-lg border-[0.75px] p-2.5 transition-colors group-hover:bg-blue-500/10 group-hover:text-blue-500"
-                            style={{ 
-                              background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
-                              borderColor: TC.borderSoft,
-                              color: TC.textSub
-                            }}>
-                          {app.icon}
-                        </div>
-                        <span className={cn("text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full border", app.tagColor)}>
-                          {app.tag}
-                        </span>
-                      </div>
-
-                      {/* Content: Title & Desc */}
-                      <div className="space-y-3 mt-4">
-                        <div className="flex items-center gap-1.5">
-                          <h3 className="pt-0.5 text-xl leading-[1.375rem] font-semibold font-sans tracking-[-0.04em] md:text-2xl md:leading-[1.875rem] text-balance group-hover:text-blue-500 transition-colors"
-                              style={{ color: TC.text }}>
-                            {app.title}
-                          </h3>
-                        </div>
-                        <h2 className="font-sans text-sm leading-[1.125rem] md:text-base md:leading-[1.375rem]"
-                            style={{ color: TC.textMuted }}>
-                          {app.description}
-                        </h2>
-                      </div>
-                    </div>
-                    
-                    {/* Footer: ExternalLink */}
-                    <div className="flex items-center gap-1.5 mt-6 text-[11px] font-medium transition-colors group-hover:text-blue-500 opacity-50 group-hover:opacity-100"
-                         style={{ color: TC.textDisabled }}>
-                      <ExternalLink size={14} />
-                      <span>{app.path}</span>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            </motion.li>
-          ))}
-        </motion.ul>
+        <ResourceCardsGrid 
+          items={APPS.map(app => ({
+            title: app.title,
+            description: app.description,
+            href: app.path,
+            icon: app.icon,
+            // You can add lastUpdated here if you have that data
+          }))}
+          isGlass={theme === 'landscape'}
+          className="grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+        />
 
         {/* Footer */}
         <motion.div

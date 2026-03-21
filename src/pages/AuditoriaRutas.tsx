@@ -1,9 +1,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { compress, decompress } from 'lz-string'
 import { AnimatePresence, motion } from 'framer-motion'
-import type { TabId, RouteRow, ComunaConflict, RiskResult, SummaryRow } from '../types/auditoria'
+import type { TabId, RouteRow, ComunaConflict, SummaryRow } from '../types/auditoria'
 import { useFileParser } from '../hooks/useFileParser'
-import { useRiskAnalysis } from '../hooks/useRiskAnalysis'
 import { useConflictAnalysis } from '../hooks/useConflictAnalysis'
 import { useComunas } from '../hooks/useComunas'
 import GlassHeader, { GlassHeaderTab } from '../components/ui/GlassHeader'
@@ -11,15 +10,12 @@ import GlassHeader, { GlassHeaderTab } from '../components/ui/GlassHeader'
 const AUDITORIA_TABS: GlassHeaderTab[] = [
   { id: 'tab-plan',      label: 'Cargar Plan',   icon: '📥', badgeVariant: 'green'  },
   { id: 'tab-vehiculos', label: 'Route Plan',    icon: '📋', badgeVariant: 'blue'   },
-  { id: 'tab-mapa',      label: 'Off-Route',     icon: '⚠️', badgeVariant: 'orange' },
   { id: 'tab-geo',       label: 'Wrong Commune', icon: '📍', badgeVariant: 'red'    },
   { id: 'tab-resumen',   label: 'Summary',       icon: '📊', badgeVariant: 'orange' },
   { id: 'tab-export',    label: 'Exportar',      icon: '🚀', badgeVariant: 'blue'   },
 ]
 import TabRoutePlan from '../components/auditoria/TabRoutePlan'
-import TabOffRoute from '../components/auditoria/TabOffRoute'
 import TabWrongCommune from '../components/auditoria/TabWrongCommune'
-import TabAlertas from '../components/auditoria/TabAlertas'
 import TabSummary from '../components/auditoria/TabSummary'
 import TabExport from '../components/auditoria/TabExport'
 import RouteMapModal from '../components/auditoria/RouteMapModal'
@@ -50,11 +46,8 @@ function Toast({ msg, type }: { msg: string; type: 'ok' | 'err' }) {
 // ── buildSummaryRows ──────────────────────────────────────────────
 function buildSummaryRows(
   conflicts: ComunaConflict[],
-  riskResults: Record<string, RiskResult>,
   resolvedConflicts: Set<string>,
   flaggedConflicts: Set<string>,
-  resolvedRisk: Set<string>,
-  flaggedRisk: Set<string>,
 ): SummaryRow[] {
   const isoMap = new Map<string, SummaryRow>()
 
@@ -72,48 +65,6 @@ function buildSummaryRows(
       aKey: null,
       riskLevel: null,
     })
-  }
-
-  // 2. Process Risk (Off-Route) and Merge
-  for (const [veh, vdata] of Object.entries(riskResults)) {
-    for (const r of vdata.results) {
-      if (r.riskLevel === 'low') continue
-      const aKey = `${veh}|${r.key}`
-      const isResRisk = resolvedRisk.has(aKey)
-      const isFlgRisk = flaggedRisk.has(aKey)
-      
-      for (const isoRow of (r.isos ?? [])) {
-        const existing = isoMap.get(isoRow.iso)
-        if (existing) {
-          // Merge
-          existing.tipo = 'ambos'
-          existing.obs  = 'FR + CI'
-          existing.detalle = `${existing.detalle} | FR: ${r.comuna}`
-          existing.aKey = aKey
-          existing.riskLevel = r.riskLevel
-          
-          // Logic: if it was resuelto for Geo but pending for Risk, it's pending overall
-          const isGeoRes = resolvedConflicts.has(isoRow.iso)
-          const isGeoFlg = flaggedConflicts.has(isoRow.iso)
-          
-          if (isGeoFlg || isFlgRisk) existing.status = 'alerta'
-          else if (isGeoRes && isResRisk) existing.status = 'resuelto'
-          else existing.status = 'pendiente'
-        } else {
-          isoMap.set(isoRow.iso, {
-            iso: isoRow.iso, veh,
-            dir: isoRow.dir || '',
-            obs: 'Fuera de Ruta',
-            detalle: `${r.comuna} · ${Math.round(r.riskScore * 100)}% riesgo`,
-            tipo: 'fuera',
-            status: isResRisk ? 'resuelto' : isFlgRisk ? 'alerta' : 'pendiente',
-            geoISO: null,
-            aKey,
-            riskLevel: r.riskLevel,
-          })
-        }
-      }
-    }
   }
 
   const rows = Array.from(isoMap.values())
@@ -148,7 +99,6 @@ export default function AuditoriaRutas() {
     } catch { return [] }
   })
   const [conflicts, setConflicts]     = useState<ComunaConflict[]>([])
-  const [riskResults, setRiskResults] = useState<Record<string, RiskResult>>({})
   const [routeMapVeh, setRouteMapVeh] = useState<string | null>(null)
   const [dragging, setDragging]       = useState(false)
 
@@ -161,18 +111,6 @@ export default function AuditoriaRutas() {
   const [flaggedConflicts,  setFlaggedConflicts]  = useState<Set<string>>(() => {
     try {
       const s = localStorage.getItem('aud-flg-conf-v2')
-      return s ? new Set(JSON.parse(s)) : new Set()
-    } catch { return new Set() }
-  })
-  const [resolvedRisk,      setResolvedRisk]      = useState<Set<string>>(() => {
-    try {
-      const s = localStorage.getItem('aud-res-risk-v2')
-      return s ? new Set(JSON.parse(s)) : new Set()
-    } catch { return new Set() }
-  })
-  const [flaggedRisk,       setFlaggedRisk]       = useState<Set<string>>(() => {
-    try {
-      const s = localStorage.getItem('aud-flg-risk-v2')
       return s ? new Set(JSON.parse(s)) : new Set()
     } catch { return new Set() }
   })
@@ -197,41 +135,25 @@ export default function AuditoriaRutas() {
 
   useEffect(() => { localStorage.setItem('aud-res-conf-v2', JSON.stringify([...resolvedConflicts])) }, [resolvedConflicts])
   useEffect(() => { localStorage.setItem('aud-flg-conf-v2', JSON.stringify([...flaggedConflicts])) }, [flaggedConflicts])
-  useEffect(() => { localStorage.setItem('aud-res-risk-v2', JSON.stringify([...resolvedRisk])) }, [resolvedRisk])
-  useEffect(() => { localStorage.setItem('aud-flg-risk-v2', JSON.stringify([...flaggedRisk])) }, [flaggedRisk])
   useEffect(() => { localStorage.setItem('aud-excl-veh-v2', JSON.stringify([...excludedVehicles])) }, [excludedVehicles])
 
   const { parseFile, loading: parsing } = useFileParser()
-  const { runAnalysis: runRisk }        = useRiskAnalysis()
   const { runAnalysis: runConflict }    = useConflictAnalysis()
-  const { ready: comunasReady, getAdjMap } = useComunas()
+  const { ready: comunasReady } = useComunas()
 
   // ── Tab severity levels (color the active pill) ───────────────
   const severities = useMemo(() => {
-    // Off-Route severity
-    const allRiskResults = Object.values(riskResults).flatMap(v => v.results)
-    const offRouteSev: 'high' | 'medium' | 'none' =
-      allRiskResults.some(r => r.riskLevel === 'high')   ? 'high' :
-      allRiskResults.some(r => r.riskLevel === 'medium') ? 'medium' : 'none'
-
     // Wrong Commune severity
     const pendingConflicts = conflicts.filter(c => !resolvedConflicts.has(c.iso))
     const communeSev: 'high' | 'medium' | 'none' =
       flaggedConflicts.size > 0    ? 'high' :
       pendingConflicts.length > 0  ? 'medium' : 'none'
 
-    // Summary severity (worst of both)
-    const summarySev: 'high' | 'medium' | 'none' =
-      offRouteSev === 'high' || communeSev === 'high' ? 'high' :
-      offRouteSev === 'medium' || communeSev === 'medium' ? 'medium' : 'none'
-
     return {
-      'tab-alertas': summarySev,
-      'tab-mapa':    offRouteSev,
       'tab-geo':     communeSev,
-      'tab-resumen': summarySev,
+      'tab-resumen': communeSev,
     } satisfies Partial<Record<typeof activeTab, 'high' | 'medium' | 'none'>>
-  }, [riskResults, conflicts, resolvedConflicts, flaggedConflicts, excludedVehicles])
+  }, [conflicts, resolvedConflicts, flaggedConflicts, excludedVehicles])
 
   const handleFile = useCallback(async (file: File) => {
     const result = await parseFile(file)
@@ -239,10 +161,9 @@ export default function AuditoriaRutas() {
 
     setRouteData(result.rows)
     setConflicts([])
-    setRiskResults({})
-    setResolvedRisk(new Set())
-    setFlaggedRisk(new Set())
     setExcludedVehicles(new Set())
+    setResolvedConflicts(new Set())
+    setFlaggedConflicts(new Set())
     showToast(`✓ ${result.rows.length} ISOs cargadas${result.hasGeo ? ' · con GPS' : ''}`)
 
     // Switch to Route Plan tab after loading
@@ -253,16 +174,13 @@ export default function AuditoriaRutas() {
         showToast('comunas_data.js no disponible — análisis geo desactivado', 'err')
         return
       }
-      const adjMap = getAdjMap()
-      const riskR  = runRisk(result.rows, new Set(), adjMap)
-      setRiskResults(riskR)
       if (result.hasGeo) {
         const confR = runConflict(result.rows)
         setConflicts(confR)
         if (confR.length) showToast(`${confR.length} conflictos geo detectados`)
       }
     }, 200)
-  }, [comunasReady, getAdjMap, parseFile, runRisk, runConflict, showToast])
+  }, [comunasReady, parseFile, runConflict, showToast])
 
   const handleGeoAnalysis = useCallback(() => {
     if (!routeData.length) { showToast('Carga un archivo primero', 'err'); return }
@@ -273,30 +191,19 @@ export default function AuditoriaRutas() {
   }, [routeData, comunasReady, runConflict, showToast])
 
   const summaryRows = useMemo(() => {
-    const allRows = buildSummaryRows(conflicts, riskResults, resolvedConflicts, flaggedConflicts, resolvedRisk, flaggedRisk)
+    const allRows = buildSummaryRows(conflicts, resolvedConflicts, flaggedConflicts)
     return allRows.filter(r => !excludedVehicles.has(r.veh))
-  }, [conflicts, riskResults, resolvedConflicts, flaggedConflicts, resolvedRisk, flaggedRisk, excludedVehicles])
+  }, [conflicts, resolvedConflicts, flaggedConflicts, excludedVehicles])
 
   const badges: Partial<Record<TabId, number>> = useMemo(() => {
-    // Off-Route count: unique ISOs in results with risk >= medium
-    const offRouteISOs = new Set<string>();
-    Object.values(riskResults).forEach(v => {
-      v.results.forEach(r => {
-        if (r.riskLevel === 'high' || r.riskLevel === 'medium') {
-          r.isos?.forEach(isoRow => offRouteISOs.add(isoRow.iso));
-        }
-      });
-    });
-
     const geoAlertsCount = conflicts.filter(c => !excludedVehicles.has(c.veh) && !resolvedConflicts.has(c.iso)).length;
 
     return {
       'tab-vehiculos': routeData.length || undefined,
-      'tab-mapa':      offRouteISOs.size || undefined,
       'tab-geo':       geoAlertsCount || undefined,
       'tab-resumen':   summaryRows.filter(r => r.status !== 'resuelto').length || undefined,
     }
-  }, [routeData, riskResults, conflicts, resolvedConflicts, summaryRows, excludedVehicles])
+  }, [routeData, conflicts, resolvedConflicts, summaryRows, excludedVehicles])
 
   const toggleResolveConflict = useCallback((iso: string) => {
     setResolvedConflicts(prev => {
@@ -316,42 +223,20 @@ export default function AuditoriaRutas() {
     })
   }, [])
 
-  const toggleResolveRisk = useCallback((aKey: string) => {
-    setResolvedRisk(prev => {
-      const n = new Set(prev)
-      if (n.has(aKey)) n.delete(aKey)
-      else { n.add(aKey); setFlaggedRisk(f => { const ff = new Set(f); ff.delete(aKey); return ff }) }
-      return n
-    })
-  }, [])
-
-  const toggleFlagRisk = useCallback((aKey: string) => {
-    setFlaggedRisk(prev => {
-      const n = new Set(prev)
-      if (n.has(aKey)) n.delete(aKey)
-      else { n.add(aKey); setResolvedRisk(r => { const rr = new Set(r); rr.delete(aKey); return rr }) }
-      return n
-    })
-  }, [])
-
-  const handleSummaryResolve = useCallback((iso: string, aKey: string | null, tipo: string, resolve: boolean) => {
+  const handleSummaryResolve = useCallback((iso: string, tipo: string, resolve: boolean) => {
     // If resolve=true, clear ALL flags for this ISO
     if (resolve) {
       setFlaggedConflicts(s => { const n = new Set(s); n.delete(iso); return n })
-      if (aKey) setFlaggedRisk(s => { const n = new Set(s); n.delete(aKey); return n })
     }
 
     // Update Resolved sets
     if (tipo === 'geo' || tipo === 'ambos') {
       setResolvedConflicts(s => { const n = new Set(s); resolve ? n.add(iso) : n.delete(iso); return n })
     }
-    if ((tipo === 'fuera' || tipo === 'ambos') && aKey) {
-      setResolvedRisk(s => { const n = new Set(s); resolve ? n.add(aKey) : n.delete(aKey); return n })
-    }
     showToast(resolve ? '✓ Resuelto' : '↩ Reabierto')
   }, [showToast])
 
-  const handleResolveAll = useCallback((isos: string[], aKeys: (string | null)[]) => {
+  const handleResolveAll = useCallback((isos: string[]) => {
     setResolvedConflicts(prev => {
       const next = new Set(prev)
       isos.forEach(iso => next.add(iso))
@@ -360,22 +245,12 @@ export default function AuditoriaRutas() {
     setFlaggedConflicts(prev => {
       const next = new Set(prev)
       isos.forEach(iso => next.delete(iso))
-      return next
-    })
-    setResolvedRisk(prev => {
-      const next = new Set(prev)
-      aKeys.forEach(k => { if (k) next.add(k) })
-      return next
-    })
-    setFlaggedRisk(prev => {
-      const next = new Set(prev)
-      aKeys.forEach(k => { if (k) next.delete(k) })
       return next
     })
     showToast(`✓ ${isos.length} alertas resueltas`)
   }, [showToast])
 
-  const handleFlagAll = useCallback((isos: string[], aKeys: (string | null)[]) => {
+  const handleFlagAll = useCallback((isos: string[]) => {
     setFlaggedConflicts(prev => {
       const next = new Set(prev)
       isos.forEach(iso => next.add(iso))
@@ -386,32 +261,18 @@ export default function AuditoriaRutas() {
       isos.forEach(iso => next.delete(iso))
       return next
     })
-    setFlaggedRisk(prev => {
-      const next = new Set(prev)
-      aKeys.forEach(k => { if (k) next.add(k) })
-      return next
-    })
-    setResolvedRisk(prev => {
-      const next = new Set(prev)
-      aKeys.forEach(k => { if (k) next.delete(k) })
-      return next
-    })
     showToast(`⚠ ${isos.length} alertas marcadas`)
   }, [showToast])
 
-  const handleSummaryFlag = useCallback((iso: string, aKey: string | null, tipo: string, flag: boolean) => {
+  const handleSummaryFlag = useCallback((iso: string, tipo: string, flag: boolean) => {
     // If flag=true, clear ALL resolutions for this ISO
     if (flag) {
       setResolvedConflicts(s => { const n = new Set(s); n.delete(iso); return n })
-      if (aKey) setResolvedRisk(s => { const n = new Set(s); n.delete(aKey); return n })
     }
 
     // Update Flagged sets
     if (tipo === 'geo' || tipo === 'ambos') {
       setFlaggedConflicts(s => { const n = new Set(s); flag ? n.add(iso) : n.delete(iso); return n })
-    }
-    if ((tipo === 'fuera' || tipo === 'ambos') && aKey) {
-      setFlaggedRisk(s => { const n = new Set(s); flag ? n.add(aKey) : n.delete(aKey); return n })
     }
     showToast(flag ? '⚠ Alerta marcada' : '✕ Alerta removida')
   }, [showToast])
@@ -419,11 +280,8 @@ export default function AuditoriaRutas() {
   const handleClear = useCallback(() => {
     setRouteData([])
     setConflicts([])
-    setRiskResults({})
     setResolvedConflicts(new Set())
     setFlaggedConflicts(new Set())
-    setResolvedRisk(new Set())
-    setFlaggedRisk(new Set())
     setRouteMapVeh(null)
     setActiveTab('tab-plan')
   }, [])
@@ -477,12 +335,9 @@ export default function AuditoriaRutas() {
               {activeTab === 'tab-vehiculos' && (
                 <TabRoutePlan
                   routeData={routeData}
-                  riskResults={riskResults}
-                  resolvedRisk={resolvedRisk}
-                  onResolveRisk={(aKey, resolve) => {
-                    setResolvedRisk(s => { const n = new Set(s); resolve ? n.add(aKey) : n.delete(aKey); return n })
-                    showToast(resolve ? '✓ Aprobado' : '↩ Reabierto')
-                  }}
+                  riskResults={{}}
+                  resolvedRisk={new Set()}
+                  onResolveRisk={() => {}}
                   onOpenRouteMap={veh => { setRouteMapVeh(veh) }}
                   excludedVehicles={excludedVehicles}
                   onToggleExclude={veh => {
@@ -496,43 +351,7 @@ export default function AuditoriaRutas() {
                   }}
                 />
               )}
-              {activeTab === 'tab-mapa' && (
-                <TabOffRoute
-                  routeData={routeData}
-                  riskResults={riskResults}
-                  resolvedRisk={resolvedRisk}
-                  flaggedRisk={flaggedRisk}
-                  onToggleResolve={toggleResolveRisk}
-                  onToggleFlag={toggleFlagRisk}
-                  onResolveAll={handleResolveAll}
-                  onFlagAll={handleFlagAll}
-                  onOpenRouteMap={veh => { setRouteMapVeh(veh) }}
-                  hasData={!!routeData.length}
-                  isReady={comunasReady}
-                  onRunAnalysis={handleGeoAnalysis}
-                  excludedVehicles={excludedVehicles}
-                />
-              )}
-              {activeTab === 'tab-alertas' && (
-                <TabAlertas
-                  routeData={routeData}
-                  riskResults={riskResults}
-                  conflicts={conflicts}
-                  resolvedRisk={resolvedRisk}
-                  flaggedRisk={flaggedRisk}
-                  resolvedConflicts={resolvedConflicts}
-                  flaggedConflicts={flaggedConflicts}
-                  onToggleResolveRisk={toggleResolveRisk}
-                  onToggleFlagRisk={toggleFlagRisk}
-                  onToggleResolveConflict={toggleResolveConflict}
-                  onToggleFlagConflict={toggleFlagConflict}
-                  onResolveAll={handleResolveAll}
-                  onOpenRouteMap={veh => { setRouteMapVeh(veh) }}
-                  hasData={!!routeData.length}
-                  isReady={comunasReady}
-                  onRunGeoAnalysis={handleGeoAnalysis}
-                />
-              )}
+
               {activeTab === 'tab-resumen' && (
                 <TabSummary
                   rows={summaryRows}
@@ -540,20 +359,15 @@ export default function AuditoriaRutas() {
                   onFlag={handleSummaryFlag}
                   resolvedConflicts={resolvedConflicts}
                   flaggedConflicts={flaggedConflicts}
-                  resolvedRisk={resolvedRisk}
-                  flaggedRisk={flaggedRisk}
                 />
               )}
               {activeTab === 'tab-export' && (
                 <TabExport
                   routeData={routeData}
                   conflicts={conflicts}
-                  riskResults={riskResults}
                   summaryRows={summaryRows}
                   resolvedConflicts={resolvedConflicts}
                   flaggedConflicts={flaggedConflicts}
-                  resolvedRisk={resolvedRisk}
-                  flaggedRisk={flaggedRisk}
                 />
               )}
             </motion.div>
@@ -595,7 +409,7 @@ export default function AuditoriaRutas() {
         <RouteMapModal
           veh={routeMapVeh}
           routeData={routeData}
-          riskResults={riskResults}
+          riskResults={{}}
           conflicts={conflicts}
           onClose={() => setRouteMapVeh(null)}
         />

@@ -1,17 +1,14 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import type { RouteRow, ComunaConflict, RiskResult, SummaryRow } from '../../types/auditoria'
+import type { RouteRow, ComunaConflict, SummaryRow } from '../../types/auditoria'
 import { C, T, R, SP } from '../../ui/DS'
 
 interface Props {
   routeData:          RouteRow[]
   conflicts:          ComunaConflict[]
-  riskResults:        Record<string, RiskResult>
   summaryRows:        SummaryRow[]
   resolvedConflicts:  Set<string>
   flaggedConflicts:   Set<string>
-  resolvedRisk:       Set<string>
-  flaggedRisk:        Set<string>
 }
 
 function escHtml(s: string) {
@@ -207,8 +204,8 @@ function SectionHeader({ icon, title, delay = 0 }: { icon: string; title: string
 }
 
 export default function TabExport({
-  routeData, conflicts, riskResults, summaryRows,
-  resolvedConflicts, flaggedConflicts, resolvedRisk, flaggedRisk,
+  routeData, conflicts, summaryRows,
+  resolvedConflicts, flaggedConflicts,
 }: Props) {
 
   // ── JSON Session Snapshot ──────────────────────────────────────
@@ -221,13 +218,11 @@ export default function TabExport({
         exportedAtLocal: new Date().toLocaleString('es-CL'),
         totalISOs: routeData.length,
         totalConflicts: conflicts.length,
-        totalVehicles: Object.keys(riskResults).length,
+        totalVehicles: new Set(routeData.map(r => r.veh)).size,
       },
-      routeData, conflicts, riskResults,
+      routeData, conflicts,
       resolvedConflicts: [...resolvedConflicts],
       flaggedConflicts:  [...flaggedConflicts],
-      resolvedRisk:      [...resolvedRisk],
-      flaggedRisk:       [...flaggedRisk],
       summaryRows,
     }
     const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' })
@@ -249,7 +244,7 @@ export default function TabExport({
     const rowsHtml = rows.map((r, i) => {
       const estado = r.status === 'revisado' ? 'Revisado' : r.status === 'aprobado' ? 'Aprobado' : r.status === 'alerta' ? 'Alerta' : 'Pendiente'
       const color  = r.status === 'revisado' || r.status === 'aprobado' ? '#1a6a2a' : r.status === 'alerta' ? '#8b0000' : '#7a5000'
-      const obs    = r.tipo === 'fuera' ? 'Fuera de Ruta' : r.tipo === 'ambos' ? 'FR + C.Incorrecta' : 'C. Incorrecta'
+      const obs    = 'C. Incorrecta'
       return `<tr style="background:${i%2===0?'#fff':'#f8f9fa'}">
         <td style="padding:5px 8px;font-weight:700;font-family:monospace;color:#0051BA">${escHtml(r.iso)}</td>
         <td style="padding:5px 8px;color:#333">${escHtml(r.veh)}</td>
@@ -327,25 +322,6 @@ export default function TabExport({
     W.writeFile(wb, `conflictos_geo_${ts()}.xlsx`)
   }
 
-  function exportAnomalies() {
-    const allRows: any[] = []
-    for (const [veh, vdata] of Object.entries(riskResults)) {
-      for (const r of vdata.results) {
-        if (r.riskLevel === 'low') continue
-        allRows.push({ Vehículo: veh, Comuna: r.comuna, ISOs: r.count,
-          'Nivel Riesgo': r.riskLevel==='high'?'Alta':'Moderada',
-          'Score (%)': Math.round(r.riskScore*100) })
-      }
-    }
-    if (!allRows.length) { alert('No hay anomalías.'); return }
-    const W = getW(); if (!W) return
-    const wb = W.utils.book_new()
-    const ws = W.utils.json_to_sheet(allRows)
-    ws['!cols'] = [{wch:20},{wch:22},{wch:8},{wch:14},{wch:10}]
-    W.utils.book_append_sheet(wb, ws, 'Anomalias')
-    W.writeFile(wb, `anomalias_riesgo_${ts()}.xlsx`)
-  }
-
   function exportFullPlan() {
     if (!routeData.length) { alert('No hay plan cargado.'); return }
     const W = getW(); if (!W) return
@@ -420,19 +396,13 @@ export default function TabExport({
       actions: [{ label: '⬇ Excel', fn: exportConflicts, variant: 'success' as const }],
       disabled: !conflicts.length,
     },
-    {
-      icon: '⚠️', title: 'Anomalías de Ruta',
-      desc: `${Object.keys(riskResults).length} vehículos analizados`,
-      actions: [{ label: '⬇ Excel', fn: exportAnomalies, variant: 'success' as const }],
-      disabled: !Object.keys(riskResults).length,
-    },
   ]
 
   const statsData = [
     { label: 'ISOs',          value: routeData.length,                            color: '#58a6ff', icon: '📦' },
     { label: 'Con coords',    value: routeData.filter(r=>r.lat!==null).length,    color: '#3fb950', icon: '📍' },
     { label: 'Conflictos',    value: conflicts.length,                             color: '#f85149', icon: '⚠️' },
-    { label: 'Resueltos',     value: resolvedConflicts.size + resolvedRisk.size,   color: '#79c0ff', icon: '✅' },
+    { label: 'Resueltos',     value: resolvedConflicts.size,                       color: '#79c0ff', icon: '✅' },
   ]
 
   let cardIdx = 0

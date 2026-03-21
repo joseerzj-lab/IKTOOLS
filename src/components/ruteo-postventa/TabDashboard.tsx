@@ -357,7 +357,7 @@ export default function TabDashboard({
   }
 
   return (
-    <div className="flex-1 h-full flex flex-col overflow-hidden" style={{ background: TC.bg }}>
+    <div className="flex-1 h-full flex flex-col overflow-hidden" style={{ background: TC.bg, backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
       {/* Stats bar */}
       {rows.length > 0 && (
         <div className="flex items-center gap-3 px-4 py-2 border-b flex-wrap" style={{ borderColor: TC.borderSoft }}>
@@ -497,7 +497,7 @@ export default function TabDashboard({
           </div>
         ) : (
           <div style={{ minWidth: '100%', width: 'fit-content' }}>
-            <div className="sticky top-0 z-[110] flex" style={{ background: TC.bgCardAlt, borderBottom: `1px solid ${TC.borderSoft}` }}>
+            <div className="sticky top-0 z-[110] flex" style={{ background: TC.bgCardAlt, borderBottom: `1px solid ${TC.borderSoft}`, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
               <div className="w-8 p-1.5 flex items-center justify-center shrink-0 border-r" style={{ borderColor: TC.borderSoft }}>
                 <span className="text-[10px] font-bold" style={{ color: TC.text }}>#</span>
               </div>

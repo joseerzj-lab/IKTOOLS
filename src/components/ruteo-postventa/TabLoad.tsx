@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X } from 'lucide-react'
 import type { Row } from './types'
-import { Card, Btn } from '../../ui/DS'
+import { Btn } from '../../ui/DS'
 
 
 interface Props {
@@ -10,10 +12,8 @@ interface Props {
   // Lost functionality support
   onPVPlanUpload: (file: File) => void
   onProjectsUpload: (file: File) => void
-  onConversionUpload: (file: File) => void
   onDestinoCross: (planFile: File, convFile: File) => void
   onOriginCross: (file: File) => void
-  onRuteoUpload: (file: File) => void
   pvPlanName: string
   projectsName: string
   TC: any
@@ -25,10 +25,8 @@ export default function TabLoad({
   onLoadJSON,
   onPVPlanUpload,
   onProjectsUpload,
-  onConversionUpload,
   onDestinoCross,
   onOriginCross,
-  onRuteoUpload,
   pvPlanName,
   projectsName,
   TC
@@ -199,248 +197,288 @@ export default function TabLoad({
     reader.readAsText(file); e.target.value = ''
   }
 
-  return (
-    <div className="flex-1 h-full overflow-y-scroll custom-scrollbar p-6 flex flex-col gap-6" style={{ 
-      background: TC.bg,
-      scrollbarWidth: 'thin',
-      scrollbarColor: 'rgba(255,255,255,0.18) transparent',
-    }}>
-      
-      <div className="flex gap-6 flex-col md:flex-row mb-6">
-        
-        {/* SECCIÓN 1: CARGAS DE SESIÓN Y PROYECTOS */}
-        <div className="flex flex-col gap-6 flex-1">
-          <Card style={{ padding: 16 }}>
-            <div className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2" style={{ color: TC.textSub }}>
-              <span className="text-lg">💾</span> Sesión de Trabajo
-            </div>
-            <label className="flex flex-col items-center justify-center p-6 rounded border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
-              <span className="text-2xl mb-2">📂</span>
-              <span className="text-xs font-bold">Cargar Sesión Guardada (.json)</span>
-              <span className="text-[10px] mt-1 text-center max-w-[200px]">Restaura tu progreso desde un archivo local</span>
-              <input type="file" accept=".json" className="hidden" onChange={handleLoadJSON} />
+  const [activeModal, setActiveModal] = useState<string | null>(null)
+
+  const modules = [
+    { id: 'session', icon: '💾', title: 'Sesión de Trabajo', desc: 'Restaura tu progreso desde un archivo local (.json)' },
+    { id: 'projects', icon: '🏗️', title: 'Proyectos', desc: 'Carga el documento para cruzar proyectos Leslie' },
+    { id: 'duplicates', icon: '👯', title: 'Duplicados', desc: 'Detecta ISOs duplicadas subiendo el Plan Actual' },
+    { id: 'quick', icon: '⚡', title: 'Carga Rápida', desc: 'Pegar repites, retiros o K8 directo desde Excel' },
+    { id: 'eyr', icon: '🔄', title: 'Ship & Return', desc: 'Genera ASOs y cruza orígenes desde archivo' },
+    { id: 'crossing', icon: '🎯', title: 'Cruce Destino', desc: 'Cruza plan y conversión de transportes' }
+  ]
+
+  const renderModalContent = () => {
+    switch (activeModal) {
+      case 'session':
+        return (
+          <div className="flex flex-col gap-4">
+            <h3 className="font-bold text-lg mb-2 flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">💾</span> Cargar Sesión</h3>
+            <label className="flex flex-col items-center justify-center p-8 rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
+              <span className="text-4xl mb-3">📂</span>
+              <span className="text-sm font-bold">Cargar Sesión Guardada (.json)</span>
+              <span className="text-xs mt-2 text-center max-w-[200px] opacity-70">Restaura tu progreso desde un archivo local</span>
+              <input type="file" accept=".json" className="hidden" onChange={e => { handleLoadJSON(e); setActiveModal(null) }} />
             </label>
-          </Card>
-
-          <Card style={{ padding: 16 }}>
-            <div className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2" style={{ color: TC.textSub }}>
-              <span className="text-lg">🏗️</span> Proyectos
-            </div>
-            <div className="flex flex-col gap-3">
-              <label className="flex items-center gap-3 p-3 rounded border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
-                <span className="text-2xl">🏗️</span>
-                <div className="flex flex-col overflow-hidden flex-1">
-                  <span className="text-xs font-bold text-purple-400">Proyectos Leslie</span>
-                  <span className="text-[10px] truncate" title={projectsName}>{projectsName || 'Cargar .xlsx de Proyectos...'}</span>
-                </div>
-                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
-                  if (e.target.files?.[0]) onProjectsUpload(e.target.files[0])
-                  e.target.value = ''
-                }} />
-              </label>
-
-              <label className="flex items-center gap-3 p-3 rounded border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
-                <span className="text-2xl">📁</span>
-                <div className="flex flex-col overflow-hidden flex-1">
-                  <span className="text-xs font-bold text-blue-400">Archivo Ruteo</span>
-                  <span className="text-[10px] truncate">Cargar archivo de Ruteo (cruzará con Dashboard)</span>
-                </div>
-                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
-                  if (e.target.files?.[0]) onRuteoUpload(e.target.files[0])
-                  e.target.value = ''
-                }} />
-              </label>
-            </div>
-          </Card>
-        </div>
-
-        {/* SECCIÓN 2: MÓDULO DUPLICADOS */}
-        <div className="flex-1">
-          <Card style={{ padding: 16 }}>
-            <div className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2" style={{ color: TC.textSub }}>
-              <span className="text-lg">👯</span> Módulo de Duplicados
-            </div>
-            <div className="text-[10px] mb-4" style={{ color: TC.textFaint }}>
-              Sube el "Plan Actual". El sistema detectará automáticamente los ISOs duplicados presentes en el dashboard comparándolos con este plan.
-            </div>
-            
-            <div className="flex flex-col gap-4 mb-4">
-              <label className="flex items-center gap-3 p-6 rounded border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
-                <span className="text-3xl">📥</span>
-                <div className="flex flex-col overflow-hidden flex-1">
-                  <span className="text-sm font-bold text-blue-400">Subir Plan Actual</span>
-                  <span className="text-[10px] truncate opacity-70" title={pvPlanName}>{pvPlanName || 'Cargar archivo .xlsx...'}</span>
-                </div>
-                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => e.target.files?.[0] && onPVPlanUpload(e.target.files[0])} />
-              </label>
-            </div>
-          </Card>
-        </div>
-      </div>
-
-      <div className="flex gap-6 relative flex-col md:flex-row">
-        {/* SECCIÓN 3: ACCIONES RÁPIDAS (PEGAR TEXTO) */}
-        <Card style={{ flex: 1, padding: 16 }}>
-          <div className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2" style={{ color: TC.textSub }}>
-            <span className="text-lg">📋</span> Acciones Rápidas (Pegar & Excel)
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {[{ label: '📦 Copiar Repites', state: pasteRepites, set: setPasteRepites, fn: procesarRepites },
-              { label: '↩️ Copiar Retiros', state: pasteRetiros, set: setPasteRetiros, fn: procesarRetiros }].map(m => (
-              <div key={m.label} className="flex flex-col gap-1">
-                <div className="text-[11px] font-bold mb-1" style={{ color: TC.textSub }}>{m.label}</div>
+        )
+      case 'projects':
+        return (
+          <div className="flex flex-col gap-4">
+            <h3 className="font-bold text-lg mb-2 flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🏗️</span> Proyectos Leslie</h3>
+            <label className="flex items-center gap-4 p-6 rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
+              <span className="text-4xl">🏗️</span>
+              <div className="flex flex-col overflow-hidden flex-1">
+                <span className="text-sm font-bold text-purple-400">Subir Archivo de Proyectos</span>
+                <span className="text-xs mt-1 truncate opacity-70" title={projectsName}>{projectsName || 'Cargar .xlsx de Proyectos...'}</span>
+              </div>
+              <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
+                if (e.target.files?.[0]) onProjectsUpload(e.target.files[0])
+                e.target.value = ''
+                setActiveModal(null)
+              }} />
+            </label>
+          </div>
+        )
+      case 'duplicates':
+        return (
+          <div className="flex flex-col gap-4">
+            <h3 className="font-bold text-lg mb-2 flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">👯</span> Módulo de Duplicados</h3>
+            <p className="text-xs mb-2 leading-relaxed" style={{ color: TC.textFaint }}>
+              Sube el "Plan Actual". El sistema detectará automáticamente los ISOs duplicados.
+            </p>
+            <label className="flex items-center gap-4 p-6 rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
+              <span className="text-4xl">📥</span>
+              <div className="flex flex-col overflow-hidden flex-1">
+                <span className="text-sm font-bold text-blue-400">Subir Plan Actual</span>
+                <span className="text-xs mt-1 truncate opacity-70" title={pvPlanName}>{pvPlanName || 'Cargar archivo .xlsx...'}</span>
+              </div>
+              <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
+                if (e.target.files?.[0]) onPVPlanUpload(e.target.files[0])
+                e.target.value = ''
+                setActiveModal(null)
+              }} />
+            </label>
+          </div>
+        )
+      case 'quick':
+        return (
+          <div className="flex flex-col gap-5">
+            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">⚡</span> Carga Rápida (Pegar)</h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-bold" style={{ color: TC.textSub }}>📦 Repites</span>
                 <textarea
-                  className="w-full h-16 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none custom-scrollbar"
+                  className="w-full h-20 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none custom-scrollbar"
                   style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
                   placeholder="Pega texto de excel…"
-                  value={m.state}
-                  onChange={e => m.set(e.target.value)}
-                  onPaste={() => setTimeout(m.fn, 60)}
+                  value={pasteRepites}
+                  onChange={e => setPasteRepites(e.target.value)}
+                  onPaste={() => setTimeout(() => { procesarRepites(); setActiveModal(null) }, 60)}
                 />
-                <Btn onClick={m.fn} size="sm" style={{ width: '100%', marginTop: 4 }}>Extraer</Btn>
+                <Btn onClick={() => { procesarRepites(); setActiveModal(null) }} size="sm" style={{ width: '100%' }}>Cargar</Btn>
               </div>
-            ))}
-          </div>
-          
-          <div className="h-px w-full my-4" style={{ background: TC.borderSoft }}></div>
-
-          <div>
-            <div className="text-[11px] font-bold mb-2" style={{ color: TC.textSub }}>📌 Pegar K8 (ISOs sueltas)</div>
-            <textarea
-              className="w-full h-16 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none"
-              style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
-              placeholder="Pega ISOs separadas por saltos de línea…"
-              value={pasteK8}
-              onChange={e => setPasteK8(e.target.value)}
-              onPaste={() => setTimeout(procesarK8, 60)}
-            />
-            <Btn onClick={procesarK8} size="sm" style={{ width: '100%', marginTop: 4 }}>Procesar K8</Btn>
-          </div>
-
-          <div className="h-px w-full my-4" style={{ background: TC.borderSoft }}></div>
-
-          {/* Ship & Return */}
-          <div>
-            <div className="text-[11px] font-bold mb-2 flex items-center gap-1" style={{ color: TC.text }}>
-              <span>📦</span> Ship & Return
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1">
-                <span className="text-[9px]" style={{ color: TC.textSub }}>1. Pegar ISOs (Crea ASOs)</span>
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-bold" style={{ color: TC.textSub }}>↩️ Retiros</span>
                 <textarea
-                  className="w-full h-10 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none"
+                  className="w-full h-20 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none custom-scrollbar"
                   style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
-                  placeholder="Pega ISOs..."
-                  value={pasteEyR}
-                  onChange={e => setPasteEyR(e.target.value)}
+                  placeholder="Pega texto de excel…"
+                  value={pasteRetiros}
+                  onChange={e => setPasteRetiros(e.target.value)}
+                  onPaste={() => setTimeout(() => { procesarRetiros(); setActiveModal(null) }, 60)}
                 />
-                <Btn onClick={procesarEyRPaso1} size="sm" style={{ width: '100%', padding: '2px' }}>Paso 1</Btn>
-                
-                {eyRAsos && (
-                  <div className="mt-1 p-1 rounded" style={{ background: 'rgba(56, 189, 248, 0.1)', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-[8px] font-bold text-blue-400">ASOs Copiables</span>
-                      <button className="text-[8px] underline text-blue-400" onClick={() => { navigator.clipboard.writeText(eyRAsos); alert('Copiadas') }}>Copiar</button>
-                    </div>
-                    <textarea readOnly value={eyRAsos} className="w-full h-8 text-[8px] font-mono bg-transparent border-none outline-none resize-none custom-scrollbar" style={{ color: TC.text }} />
-                  </div>
-                )}
+                <Btn onClick={() => { procesarRetiros(); setActiveModal(null) }} size="sm" style={{ width: '100%' }}>Cargar</Btn>
               </div>
-
-              <div className="flex flex-col gap-1">
-                <span className="text-[9px]" style={{ color: TC.textSub }}>2. Cruce de Origen</span>
-                <label className="flex flex-col justify-center items-center gap-1 p-2 h-20 rounded border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
-                  <span className="text-xl">📂</span>
-                  <span className="text-[9px] font-bold text-center">Subir Origin Cross Excel</span>
-                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
-                      if (e.target.files?.[0]) onOriginCross(e.target.files[0])
-                      e.target.value = ''
-                  }} />
-                </label>
-              </div>
-            </div>
-          </div>
-
-        </Card>
-
-        {/* SECCIÓN 3: MÓDULOS DE CRUCE DE DESTINO Y VEHÍCULOS */}
-        <Card style={{ flex: 1, padding: 16 }}>
-          <div className="text-xs font-bold uppercase tracking-wider mb-4 flex items-center gap-2" style={{ color: TC.textSub }}>
-            <span className="text-lg">🔁</span> Cargar Destino Final / Cruces
-          </div>
-          
-          <div className="flex flex-col gap-5">
-            {/* Conversion */}
-            <div>
-              <label className="flex items-center gap-3 p-3 rounded border cursor-pointer transition-colors hover:bg-purple-500/10" style={{ borderColor: 'rgba(168, 85, 247, 0.4)', color: TC.textFaint }}>
-                <span className="text-lg outline outline-1 outline-purple-500/50 rounded-full w-8 h-8 flex items-center justify-center text-purple-400">🔄</span>
-                <div className="flex flex-col flex-1">
-                  <span className="text-[11px] font-bold" style={{ color: TC.text }}>Conversión de Transporte</span>
-                  <span className="text-[9px] opacity-70">Convierte los vehículos en toda la tabla (INI → FIN)</span>
-                </div>
-                <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => {
-                    if (e.target.files?.[0]) onConversionUpload(e.target.files[0])
-                    e.target.value = ''
-                }} />
-              </label>
             </div>
 
             <div className="h-px w-full" style={{ background: TC.borderSoft }}></div>
 
-            {/* Cruce de Destino */}
-            <div>
-              <div className="text-[11px] font-bold mb-2 flex items-center gap-1" style={{ color: TC.text }}>
-                <span>🎯</span> Cruce de Destino
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <label className="flex items-center gap-2 p-2 rounded border cursor-pointer hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: planCrossFile ? 'var(--blue)' : TC.borderSoft, color: planCrossFile ? TC.text : TC.textFaint, background: planCrossFile ? 'rgba(56, 189, 248, 0.05)' : 'transparent' }}>
-                  <span className="flex-shrink-0">📁</span>
-                  <div className="flex flex-col overflow-hidden">
-                    <span className="text-[9px] font-bold truncate">1. Plan File</span>
-                    <span className="text-[8px] truncate opacity-80">{planCrossFile?.name || 'Requerido'}</span>
-                  </div>
-                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => setPlanCrossFile(e.target.files?.[0] || null)} />
-                </label>
-
-                <label className="flex items-center gap-2 p-2 rounded border cursor-pointer hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: convCrossFile ? 'var(--blue)' : TC.borderSoft, color: convCrossFile ? TC.text : TC.textFaint, background: convCrossFile ? 'rgba(56, 189, 248, 0.05)' : 'transparent' }}>
-                  <span className="flex-shrink-0">📁</span>
-                  <div className="flex flex-col overflow-hidden">
-                    <span className="text-[9px] font-bold truncate">2. Conversion</span>
-                    <span className="text-[8px] truncate opacity-80">{convCrossFile?.name || 'Requerido'}</span>
-                  </div>
-                  <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => setConvCrossFile(e.target.files?.[0] || null)} />
-                </label>
-              </div>
-
-              <Btn 
-                variant="primary" 
-                disabled={!planCrossFile || !convCrossFile} 
-                onClick={() => {
-                  if (planCrossFile && convCrossFile) {
-                    onDestinoCross(planCrossFile, convCrossFile)
-                    setPlanCrossFile(null)
-                    setConvCrossFile(null)
-                  }
-                }} 
-                style={{ width: '100%', marginTop: 8 }}
-              >
-                ⚡ Ejecutar Cruce de Destino
-              </Btn>
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold" style={{ color: TC.textSub }}>📌 K8 (ISOs sueltas)</span>
+              <textarea
+                className="w-full h-16 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none"
+                style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
+                placeholder="Pega ISOs separadas por saltos de línea…"
+                value={pasteK8}
+                onChange={e => setPasteK8(e.target.value)}
+                onPaste={() => setTimeout(() => { procesarK8(); setActiveModal(null) }, 60)}
+              />
+              <Btn onClick={() => { procesarK8(); setActiveModal(null) }} size="sm" style={{ width: '100%' }}>Procesar K8</Btn>
             </div>
-            
           </div>
-        </Card>
-      </div>
+        )
+      case 'eyr':
+        return (
+          <div className="flex flex-col gap-5">
+            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🔄</span> Ship & Return</h3>
+            
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold" style={{ color: TC.textSub }}>Paso 1: Pegar ISOs (Genera ASOs)</span>
+              <textarea
+                className="w-full h-20 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none"
+                style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
+                placeholder="Pega tabla con ISOs..."
+                value={pasteEyR}
+                onChange={e => setPasteEyR(e.target.value)}
+              />
+              <Btn onClick={procesarEyRPaso1} size="sm" style={{ width: '100%' }}>Generar (Paso 1)</Btn>
+              
+              {eyRAsos && (
+                <div className="mt-2 p-2 rounded bg-blue-500/10 border border-blue-500/30">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-[10px] font-bold text-blue-400">ASOs Copiables</span>
+                    <button className="text-[10px] underline text-blue-400 cursor-pointer" onClick={() => { navigator.clipboard.writeText(eyRAsos); alert('Copiadas') }}>Copiar</button>
+                  </div>
+                  <textarea readOnly value={eyRAsos} className="w-full h-12 text-[10px] font-mono bg-transparent border-none outline-none resize-none custom-scrollbar" style={{ color: TC.text }} />
+                </div>
+              )}
+            </div>
+
+            <div className="h-px w-full" style={{ background: TC.borderSoft }}></div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-xs font-bold" style={{ color: TC.textSub }}>Paso 2: Cruce de Origen</span>
+              <label className="flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
+                <span className="text-2xl">📂</span>
+                <span className="text-xs font-bold">Subir Origin Cross Excel</span>
+                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
+                  if (e.target.files?.[0]) onOriginCross(e.target.files[0])
+                  e.target.value = ''
+                  setActiveModal(null)
+                }} />
+              </label>
+            </div>
+          </div>
+        )
+      case 'crossing':
+        return (
+          <div className="flex flex-col gap-5">
+            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🎯</span> Cruce de Destino</h3>
+            <p className="text-xs leading-relaxed" style={{ color: TC.textFaint }}>Cruza un Plan File con un archivo de Conversión para asignar los destinos finales.</p>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <label className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors" style={{ borderColor: planCrossFile ? '#3b82f6' : TC.borderSoft, color: planCrossFile ? TC.text : TC.textFaint, background: planCrossFile ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }}>
+                <span className="text-2xl">📁</span>
+                <span className="text-xs font-bold text-center">Plan File</span>
+                <span className="text-[10px] truncate max-w-[120px] opacity-70">{planCrossFile?.name || 'Requerido'}</span>
+                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => setPlanCrossFile(e.target.files?.[0] || null)} />
+              </label>
+
+              <label className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors" style={{ borderColor: convCrossFile ? '#3b82f6' : TC.borderSoft, color: convCrossFile ? TC.text : TC.textFaint, background: convCrossFile ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }}>
+                <span className="text-2xl">🔄</span>
+                <span className="text-xs font-bold text-center">Conversion</span>
+                <span className="text-[10px] truncate max-w-[120px] opacity-70">{convCrossFile?.name || 'Requerido'}</span>
+                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => setConvCrossFile(e.target.files?.[0] || null)} />
+              </label>
+            </div>
+
+            <Btn 
+              variant="primary" 
+              disabled={!planCrossFile || !convCrossFile} 
+              onClick={() => {
+                if (planCrossFile && convCrossFile) {
+                  onDestinoCross(planCrossFile, convCrossFile)
+                  setPlanCrossFile(null)
+                  setConvCrossFile(null)
+                  setActiveModal(null)
+                }
+              }} 
+              style={{ width: '100%', marginTop: 8, padding: '12px 16px' }}
+            >
+              ⚡ Ejecutar Cruce
+            </Btn>
+          </div>
+        )
+      default: return null
+    }
+  }
+
+  return (
+    <div className="flex-1 h-full overflow-y-scroll custom-scrollbar p-6 lg:p-10 relative" style={{ 
+      background: TC.bg,
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+      scrollbarWidth: 'thin',
+      scrollbarColor: 'rgba(255,255,255,0.18) transparent',
+    }}>
       
-      {rows.length > 0 && (
-         <div className="text-center p-4 rounded-xl mt-auto" style={{ background: 'rgba(56,189,248,.1)', border: `1px solid rgba(56,189,248,.3)` }}>
-            <span style={{ color: TC.textSub, fontSize: 13 }}>
-                Actualmente tienes <strong>{rows.length}</strong> datos cargados en la sesión. 
-                Ve al <strong style={{ color: '#38bdf8' }}>Dashboard</strong> para gestionarlos.
-            </span>
-         </div>
-      )}
+      <div className="max-w-5xl mx-auto flex flex-col gap-8">
+        <div>
+          <h2 className="text-2xl font-black mb-2 flex items-center gap-3" style={{ color: TC.text }}>
+            <span className="text-3xl">📥</span> Carga de Datos
+          </h2>
+          <p className="text-sm opacity-80 max-w-2xl" style={{ color: TC.textSub }}>
+            Selecciona el módulo de carga que necesitas utilizar.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {modules.map(m => (
+            <div 
+              key={m.id} 
+              className="cursor-pointer transition-all hover:-translate-y-1 group rounded-2xl"
+              style={{ padding: 24, boxShadow: `0 4px 20px rgba(0,0,0,0.05)`, background: TC.bgCard, border: `1px solid ${TC.borderSoft}`, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
+              onClick={() => setActiveModal(m.id)}
+            >
+              <div className="flex flex-col h-full gap-4">
+                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-transform group-hover:scale-110" style={{ background: `${TC.borderSoft}50` }}>
+                  {m.icon}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold mb-1" style={{ color: TC.text }}>{m.title}</h3>
+                  <p className="text-[11px] leading-relaxed" style={{ color: TC.textFaint }}>{m.desc}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        {rows.length > 0 && (
+           <div className="text-center p-4 rounded-xl" style={{ background: 'rgba(56,189,248,.1)', border: `1px solid rgba(56,189,248,.3)` }}>
+              <span style={{ color: TC.textSub, fontSize: 13 }}>
+                  Actualmente tienes <strong>{rows.length}</strong> datos cargados en la sesión. 
+                  Ve al <strong style={{ color: '#38bdf8' }}>Dashboard</strong> para gestionarlos.
+              </span>
+           </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {activeModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+            onClick={() => setActiveModal(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden relative"
+              style={{ background: TC.bgCard, border: `1px solid ${TC.borderSoft}`, backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button 
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition-colors z-10"
+                style={{ color: TC.textSub }}
+                onClick={() => setActiveModal(null)}
+              >
+                <X size={16} />
+              </button>
+              
+              <div className="p-6 md:p-8">
+                {renderModalContent()}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   )
 }
