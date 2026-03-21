@@ -200,11 +200,23 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
           + buildHTMLTable(dataProy, ['ISO', 'DESTINO'], true)
       }
 
-      // 5. Corrección de Ruta (Req 4)
+      // 5. Corrección de Ruta (Refined filter)
       const dataCorr = sortData(rows.filter(r => {
-        const gest = String(r['GESTIÓN'] || '').toUpperCase()
         const ori = String(r.ORIGEN || '').toUpperCase()
-        return (gest === 'ENVIO Y RETIRO') && ori !== 'VEH99'
+        const repite = String(r['CORREO REPITES'] || '').toUpperCase()
+        
+        // Base conditions from user
+        if (ori === 'VEH99' || repite === 'SI') return false
+        
+        // Exclude things obviously handled in other PM sections to avoid duplicates
+        if (isPV(r.DESTINO) || isK8(r)) return false
+        
+        // Exclude also projects to avoid duplicates
+        const cond = String(r.CONDUCTOR || '').trim()
+        if (cond === 'Francisco Javier diaz zamora' || cond === 'Proyecto_cocinas') return false
+
+        // Finally, for PM ruteos, we mostly care about deliveries/returns that aren't in other sections
+        return true
       }).map(r => ({
         ...r,
         'GESTIÓN': 'CORRECCION DE RUTA'

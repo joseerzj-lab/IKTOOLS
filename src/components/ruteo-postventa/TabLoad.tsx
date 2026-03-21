@@ -48,35 +48,39 @@ export default function TabLoad({
   const procesarRepites = () => {
     if (!pasteRepites.trim()) return
     const lines = pasteRepites.trim().split('\n')
-    if (lines.length < 1) return
+    if (lines.length < 2) return
 
     const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
+    const rawHeaders = lines[0].split(sep).map(sanH)
     
-    // Fixed positional mapping as requested:
-    // Input 0: ISO, Input 1: VEH, Input 2: COM, Input 3: ORIGEN
-    const data = lines.map(line => {
-      const row = line.split(sep)
-      const iso = (row[0] || "").trim().toUpperCase()
-      if (!iso) return null
+    // Legacy header mapping
+    const cIsoIdx = rawHeaders.findIndex(h => h === "ISO")
+    const cVehIdx = rawHeaders.findIndex(h => h === "VEH" || h === "VEHICULO")
+    const cComIdx = rawHeaders.findIndex(h => h === "COMENTARIO" || h === "COMENTARIOS")
+    const cOriIdx = rawHeaders.findIndex(h => h === "ORIGEN")
 
-      const veh = (row[1] || "").trim().toUpperCase()
-      const com = (row[2] || "").trim().toUpperCase()
-      const ori = (row[3] || "").trim().toUpperCase()
+    if (cIsoIdx === -1) return
+
+    const data: Row[] = []
+    lines.slice(1).forEach(line => {
+      const v = line.split(sep)
+      const iso = (v[cIsoIdx] || "").trim().toUpperCase().replace("NAN", "")
+      if (!iso) return
+
+      const veh = cVehIdx !== -1 ? (v[cVehIdx] || "").trim().toUpperCase().replace("NAN", "") : ""
+      const com = cComIdx !== -1 ? (v[cComIdx] || "").trim().toUpperCase().replace("NAN", "") : ""
+      const ori = cOriIdx !== -1 ? (v[cOriIdx] || "").trim().toUpperCase().replace("NAN", "") : ""
       
       let g = "REPITE"
       if (veh) {
         const eyr = (com.includes("ENVIO") && com.includes("RETIRO")) || com.includes("ENVIO Y RETIRO")
-        const solo = com.includes("SOLO ENVIO") || com.includes("SOLO ENVÍO")
         
         if (veh.includes("PROYECTO LESLIE")) g = "REPITE PROYECTO"
-        else if (veh.includes("LESLIE")) g = eyr ? "ENVIO Y RETIRO" : solo ? "SOLO ENVIO" : "REPITE LESLIE"
-        else {
-          if (eyr) g = "ENVIO Y RETIRO"
-          else if (solo) g = "SOLO ENVIO"
-        }
+        else if (veh.includes("LESLIE")) g = eyr ? "ENVIO Y RETIRO" : "REPITE LESLIE"
+        else if (eyr) g = "ENVIO Y RETIRO"
       }
       
-      return {
+      data.push({
         ISO: iso,
         'GESTIÓN': g,
         ORIGEN: ori,
@@ -85,11 +89,12 @@ export default function TabLoad({
         COMENTARIO_RAW: com,
         VEH: veh,
         _SOURCE: 'Repites'
-      }
-    }).filter(Boolean) as Row[]
-    
-    // Updated output order: ISO, GESTIÓN, ORIGEN, DESTINO, CORREO REPITES, COMENTARIO_RAW, VEH
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','CORREO REPITES','COMENTARIO_RAW','VEH'], data, 'Repites')
+      })
+    })
+
+    if (data.length > 0) {
+      onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','CORREO REPITES','COMENTARIO_RAW','VEH'], data, 'Repites')
+    }
     setPasteRepites('')
   }
 
