@@ -139,7 +139,7 @@ export default function ConsultorISOs() {
         setApiProgress(`${done}/${total}`)
       })
 
-      // Map SimpliRouteResult → ISORow (which already has the same fields)
+      // Map SimpliRouteResult → ISORow
       const mapped: ISORow[] = apiResults.map(r => ({
         iso: r.iso,
         found: r.found,
@@ -152,6 +152,11 @@ export default function ConsultorISOs() {
         conductor: r.conductor,
         vehiculo: r.vehiculo,
         fechaPlanificada: r.fechaPlanificada,
+        idReferencia: r.idReferencia,
+        latitud: r.latitud,
+        longitud: r.longitud,
+        carga: r.carga,
+        carga2: r.carga2,
       }))
 
       setResults(mapped)
@@ -178,15 +183,19 @@ export default function ConsultorISOs() {
     if (!results.length) return
     const isSimp = searchMode === 'simpliroute'
     const headers = isSimp
-      ? ['ISO', 'Dirección', 'Estado', 'Conductor', 'Vehículo', 'Fecha Planificada', 'Comentario', 'Motivo']
+      ? ['ISO', 'Id Referencia', 'Fecha Planificada', 'Conductor', 'Vehículo', 'Dirección', 'Estado', 'Latitud', 'Longitud', 'Carga', 'Carga 2', 'Comentario', 'Motivo', 'Foto (URL)']
       : ['ISO', 'Dirección', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega']
     let tsv = headers.join('\t') + '\n'
     results.forEach(r => {
       if (isSimp) {
         tsv += [
           r.iso + (!r.found ? ' [NO HALLADO]' : ''),
-          r.direccion, r.estado, r.conductor || '', r.vehiculo || '',
-          r.fechaPlanificada || '', r.comentario, r.motivo,
+          r.idReferencia || '', r.fechaPlanificada || '',
+          r.conductor || '', r.vehiculo || '',
+          r.direccion, r.estado,
+          r.latitud || '', r.longitud || '',
+          r.carga || '', r.carga2 || '',
+          r.comentario, r.motivo, r.imageUrl || '',
         ].join('\t') + '\n'
       } else {
         tsv += [r.iso + (!r.found ? ' [NO HALLADO]' : ''), r.direccion, r.estado, r.comentario, r.motivo].join('\t') + '\n'

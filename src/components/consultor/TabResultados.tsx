@@ -20,6 +20,11 @@ type ISORow = {
   conductor?: string
   vehiculo?: string
   fechaPlanificada?: string
+  idReferencia?: string
+  latitud?: string
+  longitud?: string
+  carga?: string
+  carga2?: string
 }
 
 interface Props {
@@ -40,7 +45,7 @@ function getEstadoClass(e: string): { bg: string; color: string } {
 }
 
 const HEADERS_GEO = ['ISO', 'Dirección', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega', 'Fotos']
-const HEADERS_SIMPLI = ['ISO', 'Dirección', 'Estado', 'Conductor', 'Vehículo', 'Fecha Planificada', 'Comentario', 'Motivo', 'Fotos']
+const HEADERS_SIMPLI = ['ISO', 'Id Referencia', 'Fecha Planificada', 'Conductor', 'Vehículo', 'Dirección', 'Estado', 'Latitud', 'Longitud', 'Carga', 'Carga 2', 'Comentario', 'Motivo', 'Fotos']
 
 export default function TabResultados({ results, onCopiar, searchMode = 'geosort' }: Props) {
   const { theme } = useTheme()
@@ -178,89 +183,100 @@ export default function TabResultados({ results, onCopiar, searchMode = 'geosort
                 <AnimatePresence initial={false}>
                   {results.map((r, i) => {
                     const estadoStyle = getEstadoClass(r.estado)
+
+                    /* Map header name → cell content */
+                    const cellFor = (h: string) => {
+                      switch (h) {
+                        case 'ISO': return (
+                          <td key={h} style={cellStyle({ fontWeight: 700, color: r.found ? '#eab308' : '#f87171' })}>
+                            {r.iso}
+                            {!r.found && (
+                              <span style={{
+                                marginLeft: 8, fontSize: 9, fontWeight: 700,
+                                padding: '2px 6px', borderRadius: R.pill,
+                                background: 'rgba(248,81,73,0.2)', color: '#ff7b72',
+                              }}>NO HALLADO</span>
+                            )}
+                          </td>
+                        )
+                        case 'Id Referencia': return (
+                          <td key={h} style={cellStyle({ color: TC.text, fontSize: T.sm, whiteSpace: 'nowrap' })}>{r.idReferencia || '—'}</td>
+                        )
+                        case 'Fecha Planificada': return (
+                          <td key={h} style={cellStyle({ color: TC.textFaint, fontSize: T.sm, whiteSpace: 'nowrap', fontFamily: T.fontMono })}>{r.fechaPlanificada || '—'}</td>
+                        )
+                        case 'Conductor': return (
+                          <td key={h} style={cellStyle({ color: TC.text, fontSize: T.sm, whiteSpace: 'nowrap' })}>{r.conductor || <span style={{ color: TC.textDisabled }}>—</span>}</td>
+                        )
+                        case 'Vehículo': return (
+                          <td key={h} style={cellStyle({ color: TC.text, fontSize: T.sm, whiteSpace: 'nowrap' })}>{r.vehiculo || <span style={{ color: TC.textDisabled }}>—</span>}</td>
+                        )
+                        case 'Dirección': return (
+                          <td key={h} style={cellStyle({ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: TC.textSub, maxWidth: 200, fontSize: T.sm })}>{r.direccion}</td>
+                        )
+                        case 'Estado': return (
+                          <td key={h} style={cellStyle()}>
+                            {r.estado && (
+                              <span style={{
+                                fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: R.pill,
+                                background: estadoStyle.bg, color: estadoStyle.color, whiteSpace: 'nowrap',
+                              }}>{r.estado}</span>
+                            )}
+                          </td>
+                        )
+                        case 'Latitud': return (
+                          <td key={h} style={cellStyle({ color: TC.textFaint, fontSize: T.sm, fontFamily: T.fontMono })}>{r.latitud || ''}</td>
+                        )
+                        case 'Longitud': return (
+                          <td key={h} style={cellStyle({ color: TC.textFaint, fontSize: T.sm, fontFamily: T.fontMono })}>{r.longitud || ''}</td>
+                        )
+                        case 'Carga': return (
+                          <td key={h} style={cellStyle({ color: TC.text, fontSize: T.sm })}>{r.carga || ''}</td>
+                        )
+                        case 'Carga 2': return (
+                          <td key={h} style={cellStyle({ color: TC.text, fontSize: T.sm })}>{r.carga2 || ''}</td>
+                        )
+                        case 'Comentario':
+                        case 'Comentario No Entrega': return (
+                          <td key={h} style={cellStyle({ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: TC.text, maxWidth: 300, fontSize: T.base })}>{r.comentario}</td>
+                        )
+                        case 'Motivo':
+                        case 'Motivo No Entrega': return (
+                          <td key={h} style={cellStyle({ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: TC.text, maxWidth: 300, fontSize: T.base })}>{r.motivo}</td>
+                        )
+                        case 'Fotos': return (
+                          <td key={h} style={cellStyle()}>
+                            {r.imageUrl && r.imageUrl.trim().length > 0 ? (
+                              <button
+                                onClick={() => openPhotos(r.imageUrl)}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                                  padding: '4px 10px', background: '#3b82f6', color: 'white',
+                                  borderRadius: '6px', fontSize: 11, fontWeight: 'bold', border: 'none', cursor: 'pointer'
+                                }}
+                              >
+                                <ImageIcon size={14} /> Ver Fotos
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 11, color: TC.textFaint }}>Sin fotos</span>
+                            )}
+                          </td>
+                        )
+                        default: return <td key={h} style={cellStyle()}></td>
+                      }
+                    }
+
                     return (
                       <motion.tr
                         key={`${r.iso}-${i}`}
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: Math.min(i * 0.02, 0.5) }}
-                        style={{
-                          background: !r.found ? 'rgba(248,81,73,0.04)' : 'transparent',
-                        }}
+                        style={{ background: !r.found ? 'rgba(248,81,73,0.04)' : 'transparent' }}
                         onMouseEnter={e => (e.currentTarget.style.background = !r.found ? 'rgba(248,81,73,0.08)' : 'rgba(255,255,255,0.02)')}
                         onMouseLeave={e => (e.currentTarget.style.background = !r.found ? 'rgba(248,81,73,0.04)' : 'transparent')}
                       >
-                        {/* ISO */}
-                        <td style={cellStyle({ fontWeight: 700, color: r.found ? '#eab308' : '#f87171' })}>
-                          {r.iso}
-                          {!r.found && (
-                            <span style={{
-                              marginLeft: 8, fontSize: 9, fontWeight: 700,
-                              padding: '2px 6px', borderRadius: R.pill,
-                              background: 'rgba(248,81,73,0.2)', color: '#ff7b72',
-                            }}>NO HALLADO</span>
-                          )}
-                        </td>
-                        {/* Dirección */}
-                        <td style={cellStyle({
-                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                          color: TC.textSub, maxWidth: 200, fontSize: T.sm,
-                        })}>{r.direccion}</td>
-                        {/* Estado */}
-                        <td style={cellStyle()}>
-                          {r.estado && (
-                            <span style={{
-                              fontSize: 9, fontWeight: 700,
-                              padding: '2px 8px', borderRadius: R.pill,
-                              background: estadoStyle.bg,
-                              color: estadoStyle.color,
-                              whiteSpace: 'nowrap',
-                            }}>{r.estado}</span>
-                          )}
-                        </td>
-
-                        {/* === SimpliRoute extra columns === */}
-                        {isSimpli && (
-                          <>
-                            <td style={cellStyle({ color: TC.text, fontSize: T.sm, whiteSpace: 'nowrap' })}>
-                              {r.conductor || <span style={{ color: TC.textDisabled }}>—</span>}
-                            </td>
-                            <td style={cellStyle({ color: TC.text, fontSize: T.sm, whiteSpace: 'nowrap' })}>
-                              {r.vehiculo || <span style={{ color: TC.textDisabled }}>—</span>}
-                            </td>
-                            <td style={cellStyle({ color: TC.textFaint, fontSize: T.sm, whiteSpace: 'nowrap', fontFamily: T.fontMono })}>
-                              {r.fechaPlanificada || '—'}
-                            </td>
-                          </>
-                        )}
-
-                        {/* Comentario */}
-                        <td style={cellStyle({
-                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                          color: TC.text, maxWidth: 300, fontSize: T.base,
-                        })}>{r.comentario}</td>
-                        {/* Motivo */}
-                        <td style={cellStyle({
-                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                          color: TC.text, maxWidth: 300, fontSize: T.base,
-                        })}>{r.motivo}</td>
-                        {/* Fotos */}
-                        <td style={cellStyle()}>
-                          {r.imageUrl && r.imageUrl.trim().length > 0 ? (
-                            <button 
-                              onClick={() => openPhotos(r.imageUrl)}
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 6,
-                                padding: '4px 10px', background: '#3b82f6', color: 'white',
-                                borderRadius: '6px', fontSize: 11, fontWeight: 'bold', border: 'none', cursor: 'pointer'
-                              }}
-                            >
-                              <ImageIcon size={14} /> Ver Fotos
-                            </button>
-                          ) : (
-                            <span style={{ fontSize: 11, color: TC.textFaint }}>Sin fotos</span>
-                          )}
-                        </td>
+                        {HEADERS.map(h => cellFor(h))}
                       </motion.tr>
                     )
                   })}
@@ -271,14 +287,15 @@ export default function TabResultados({ results, onCopiar, searchMode = 'geosort
         </>
       )}
 
-      <ImageModal 
-        isOpen={modalOpen} 
-        onClose={() => setModalOpen(false)} 
-        images={modalImages} 
+      <ImageModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        images={modalImages}
       />
     </div>
   )
 }
 
 export type { ISORow }
+
 
