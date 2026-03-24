@@ -10,6 +10,54 @@ import type { SearchMode } from '../components/consultor/TabConsultar'
 import TabResultados, { ISORow } from '../components/consultor/TabResultados'
 import { searchMultipleISOs } from '../utils/simpliRouteApi'
 
+/* ── iOS-style Switch ── */
+function ModeSwitch({ mode, onChange }: { mode: SearchMode; onChange: (m: SearchMode) => void }) {
+  const isSimpli = mode === 'simpliroute'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <span style={{
+        fontSize: 10, fontWeight: 700,
+        color: !isSimpli ? '#3fb950' : 'rgba(255,255,255,0.35)',
+        transition: 'color 0.25s',
+      }}>📂 GeoSort</span>
+
+      <motion.div
+        onClick={() => onChange(isSimpli ? 'geosort' : 'simpliroute')}
+        style={{
+          width: 44, height: 24, borderRadius: 12, cursor: 'pointer',
+          background: isSimpli
+            ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
+            : 'linear-gradient(135deg, #22c55e, #16a34a)',
+          padding: 3,
+          display: 'flex', alignItems: 'center',
+          boxShadow: isSimpli
+            ? '0 2px 10px rgba(99,102,241,0.4), inset 0 1px 0 rgba(255,255,255,0.2)'
+            : '0 2px 10px rgba(34,197,94,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+          transition: 'background 0.3s, box-shadow 0.3s',
+        }}
+        whileTap={{ scale: 0.92 }}
+      >
+        <motion.div
+          animate={{ x: isSimpli ? 20 : 0 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+          style={{
+            width: 18, height: 18, borderRadius: '50%',
+            background: '#fff',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+          }}
+        />
+      </motion.div>
+
+      <span style={{
+        fontSize: 10, fontWeight: 700,
+        color: isSimpli ? '#a78bfa' : 'rgba(255,255,255,0.35)',
+        transition: 'color 0.25s',
+      }}>🌐 SimpliRoute</span>
+    </div>
+  )
+}
+
+
 const ISO_TABS: GlassHeaderTab[] = [
   { id: 'tab-cargar',     label: 'Base Recibida',          icon: '📥', badgeVariant: 'blue'   },
   { id: 'tab-explorar',   label: 'Consultar ISO',          icon: '🗂️', badgeVariant: 'purple' },
@@ -234,6 +282,16 @@ export default function ConsultorISOs() {
         }}
       />
 
+      {/* Global Search Mode Switch */}
+      {(activeTab === 'tab-explorar' || activeTab === 'tab-consultar') && (
+        <div style={{
+          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '10px 20px',
+          background: TC.bgCard, borderBottom: `1px solid ${TC.border}`
+        }}>
+           <ModeSwitch mode={searchMode} onChange={setSearchMode} />
+        </div>
+      )}
+
       <div className="flex-1 overflow-hidden relative" style={{ background: TC.bg }}>
         <AnimatePresence mode="wait">
           {activeTab === 'tab-cargar' && (
@@ -249,18 +307,18 @@ export default function ConsultorISOs() {
             </motion.div>
           )}
 
-          {activeTab === 'tab-explorar' && (
-            <motion.div
-              key="tab-explorar"
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.02 }}
-              transition={{ duration: 0.2 }}
-              className="absolute inset-0 overflow-y-auto"
-            >
-              <TabExplorar rawRows={rawRows} />
-            </motion.div>
-          )}
+            {activeTab === 'tab-explorar' && (
+              <motion.div
+                key="tab-explorar"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.02 }}
+                transition={{ duration: 0.2 }}
+                className="absolute inset-0 overflow-hidden"
+              >
+                <TabExplorar rawRows={rawRows} searchMode={searchMode} />
+              </motion.div>
+            )}
 
           {activeTab === 'tab-consultar' && (
             <motion.div
