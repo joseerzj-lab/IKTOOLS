@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
 import { PageShell } from '../ui/DS'
@@ -64,7 +64,35 @@ export default function RuteadorV9() {
     } catch { return new Set(columns) }
   })
   const [toast, setToast] = useState('')
-  
+
+  // ── Filter state (lifted from TabDashboard so it persists across tabs) ──
+  const [search, setSearch] = useState('')
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({})
+  const [sortCol, setSortCol] = useState<{ col: string; dir: 'asc' | 'desc' } | null>(null)
+
+  const filteredRows = useMemo(() => {
+    let result = rows
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter(r => columns.some(c => (r[c] || '').toLowerCase().includes(q)))
+    }
+    Object.entries(colFilters).forEach(([col, allowedValues]) => {
+      if (allowedValues.size > 0) {
+        result = result.filter(r => allowedValues.has(r[col] || ''))
+      }
+    })
+    if (sortCol) {
+      result = [...result].sort((a, b) => {
+        const valA = (a[sortCol.col] || '').toLowerCase()
+        const valB = (b[sortCol.col] || '').toLowerCase()
+        if (valA < valB) return sortCol.dir === 'asc' ? -1 : 1
+        if (valA > valB) return sortCol.dir === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+    return result
+  }, [rows, columns, search, colFilters, sortCol])
+
   // Lost functionality state
   const [pvPlanData, setPvPlanData] = useState<string[]>([])
   const [pvPlanName, setPvPlanName] = useState('')
@@ -453,13 +481,19 @@ export default function RuteadorV9() {
                 onUpdateRows={setRows}
                 onNotify={flash}
                 onClearAll={clearDashboard}
+                search={search}
+                setSearch={setSearch}
+                colFilters={colFilters}
+                setColFilters={setColFilters}
+                sortCol={sortCol}
+                setSortCol={setSortCol}
               />
             </motion.div>
           )}
 
           {tab === 'export' && (
             <motion.div key="export" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }} className="absolute inset-0">
-              <TabExport rows={rows} stats={stats} onExportJSON={exportJSON} />
+              <TabExport rows={rows} filteredRows={filteredRows} stats={stats} onExportJSON={exportJSON} />
             </motion.div>
           )}
 

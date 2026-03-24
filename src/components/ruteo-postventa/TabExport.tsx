@@ -7,11 +7,12 @@ import * as XLSX from 'xlsx'
 
 interface Props {
   rows: Row[]
+  filteredRows: Row[]
   stats: Stats
   onExportJSON: () => void
 }
 
-export default function TabExport({ rows, stats, onExportJSON }: Props) {
+export default function TabExport({ rows, filteredRows, stats, onExportJSON }: Props) {
   const { theme } = useTheme()
   const TC = getThemeColors(theme)
   
@@ -85,9 +86,9 @@ export default function TabExport({ rows, stats, onExportJSON }: Props) {
   }
 
   const handleCopyTable = () => {
-    if (!rows.length) return
-    const cols = Object.keys(rows[0] || {}).filter(k => k !== '_SOURCE' && k !== 'Commerce' && !k.startsWith('_'))
-    const sortedRows = [...rows].sort((a, b) => {
+    if (!filteredRows.length) return
+    const cols = Object.keys(filteredRows[0] || {}).filter(k => k !== '_SOURCE' && k !== 'Commerce' && !k.startsWith('_'))
+    const sortedRows = [...filteredRows].sort((a, b) => {
       const valA = String(a.DESTINO || '').toUpperCase()
       const valB = String(b.DESTINO || '').toUpperCase()
       return valA.localeCompare(valB)
@@ -98,7 +99,7 @@ export default function TabExport({ rows, stats, onExportJSON }: Props) {
   }
 
   const handleCopyISOs = () => {
-    const isos = rows.map(r => String(r.ISO || '')).filter(Boolean)
+    const isos = filteredRows.map(r => String(r.ISO || '')).filter(Boolean)
     const text = isos.join(', ')
     navigator.clipboard.writeText(text)
     setCopiedId('isos')
@@ -149,7 +150,7 @@ export default function TabExport({ rows, stats, onExportJSON }: Props) {
                  className="w-full h-24 p-2 rounded text-[10px] font-mono resize-none transition-colors border outline-none custom-scrollbar"
                  style={{ background: TC.bgCardAlt, color: TC.textSub, borderColor: TC.borderSoft }}
                  readOnly 
-                 value={rows.map(r => String(r.ISO || '')).filter(Boolean).join(', ')}
+                 value={filteredRows.map(r => String(r.ISO || '')).filter(Boolean).join(', ')}
                  placeholder="Aquí aparecerán las ISOs separadas por coma..."
               />
 

@@ -272,6 +272,8 @@ export default function Ruteo24h() {
                       <Badge variant="blue" style={{ padding: '8px 12px', justifyContent: 'center' }}>✓ {dataF1.length} filas preparadas</Badge>
                       <Btn onClick={() => handlePreRuteoExport('proyectos')} style={{ width: '100%' }}>Descargar Proyectos</Btn>
                       <Btn onClick={() => handlePreRuteoExport('post_sales')} style={{ width: '100%' }}>Descargar Post Sales</Btn>
+                      <Btn onClick={() => handlePreRuteoExport('mini')} style={{ width: '100%' }}>Descargar Mini Ticket</Btn>
+                      <Btn onClick={() => handlePreRuteoExport('regular')} style={{ width: '100%' }}>Descargar Ticket Regular</Btn>
                     </div>
                   )}
                 </Card>

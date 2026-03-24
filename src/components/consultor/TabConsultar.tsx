@@ -1,12 +1,18 @@
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme, getThemeColors } from '../../context/ThemeContext'
 
+export type SearchMode = 'geosort' | 'simpliroute'
+
 interface Props {
-  isoInput:     string
-  onInputChange:(v: string) => void
-  onConsultar:  () => void
-  onClear:      () => void
-  hasData:      boolean
+  isoInput:           string
+  onInputChange:      (v: string) => void
+  onConsultar:        () => void
+  onClear:            () => void
+  hasData:            boolean
+  searchMode:         SearchMode
+  onSearchModeChange: (m: SearchMode) => void
+  loading?:           boolean
+  loadingProgress?:   string
 }
 
 /* ── Inline Btn ────────────────────────────────────────────── */
@@ -40,9 +46,63 @@ function Btn({ children, variant = 'primary', size = 'md', style, onClick, disab
   )
 }
 
-export default function TabConsultar({ isoInput, onInputChange, onConsultar, onClear, hasData }: Props) {
+/* ── Mode Switch (iOS-style toggle) ──────────────────────── */
+function ModeSwitch({ mode, onChange }: { mode: SearchMode; onChange: (m: SearchMode) => void }) {
+  const isSimpli = mode === 'simpliroute'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{
+        fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
+        color: !isSimpli ? '#3fb950' : 'rgba(255,255,255,0.35)',
+        transition: 'color 0.25s',
+      }}>📂 GeoSort</span>
+
+      <motion.div
+        onClick={() => onChange(isSimpli ? 'geosort' : 'simpliroute')}
+        style={{
+          width: 48, height: 26, borderRadius: 13, cursor: 'pointer',
+          background: isSimpli
+            ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
+            : 'linear-gradient(135deg, #22c55e, #16a34a)',
+          padding: 3,
+          display: 'flex', alignItems: 'center',
+          boxShadow: isSimpli
+            ? '0 2px 12px rgba(99,102,241,0.4), inset 0 1px 0 rgba(255,255,255,0.2)'
+            : '0 2px 12px rgba(34,197,94,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
+          transition: 'background 0.3s, box-shadow 0.3s',
+        }}
+        whileTap={{ scale: 0.92 }}
+      >
+        <motion.div
+          animate={{ x: isSimpli ? 22 : 0 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+          style={{
+            width: 20, height: 20, borderRadius: '50%',
+            background: '#fff',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+          }}
+        />
+      </motion.div>
+
+      <span style={{
+        fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
+        color: isSimpli ? '#a78bfa' : 'rgba(255,255,255,0.35)',
+        transition: 'color 0.25s',
+      }}>🌐 SimpliRoute</span>
+    </div>
+  )
+}
+
+export default function TabConsultar({
+  isoInput, onInputChange, onConsultar, onClear, hasData,
+  searchMode, onSearchModeChange, loading, loadingProgress,
+}: Props) {
   const { theme } = useTheme()
   const TC = getThemeColors(theme)
+
+  const canSearch = searchMode === 'simpliroute'
+    ? !!isoInput.trim() && !loading
+    : hasData && !!isoInput.trim()
 
   return (
     <div style={{
@@ -54,35 +114,68 @@ export default function TabConsultar({ isoInput, onInputChange, onConsultar, onC
       transition: 'background 0.25s, color 0.25s',
     }}>
 
-      {/* Header */}
-      <div>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: TC.text, margin: 0 }}>
-          Consultar ISOs
-        </h2>
-        <p style={{ fontSize: 12, color: TC.textFaint, margin: '4px 0 0' }}>
-          Pega una o varias ISOs (una por línea, o separadas por coma/espacio). Se buscarán en ParentOrder.
-        </p>
+      {/* Header + Switch */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: TC.text, margin: 0 }}>
+            Consultar ISOs
+          </h2>
+          <p style={{ fontSize: 12, color: TC.textFaint, margin: '4px 0 0' }}>
+            {searchMode === 'geosort'
+              ? 'Busca en el archivo CSV cargado (GeoSort / ParentOrder).'
+              : 'Busca directamente en SimpliRoute por título de ISO.'}
+          </p>
+        </div>
+        <ModeSwitch mode={searchMode} onChange={onSearchModeChange} />
       </div>
 
-      {/* No data warning */}
-      {!hasData && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          style={{
-            padding: '14px 18px',
-            borderRadius: 12,
-            background: 'rgba(240,136,62,0.1)',
-            border: '1px solid rgba(240,136,62,0.3)',
-            color: '#f0883e',
-            fontSize: 12,
-            fontWeight: 600,
-            display: 'flex', alignItems: 'center', gap: 8,
-          }}
-        >
-          ⚠️ Primero carga un archivo CSV en la pestaña "Cargar"
-        </motion.div>
-      )}
+      {/* No data warning — only in GeoSort mode */}
+      <AnimatePresence>
+        {searchMode === 'geosort' && !hasData && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            style={{
+              padding: '14px 18px',
+              borderRadius: 12,
+              background: 'rgba(240,136,62,0.1)',
+              border: '1px solid rgba(240,136,62,0.3)',
+              color: '#f0883e',
+              fontSize: 12,
+              fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 8,
+              overflow: 'hidden',
+            }}
+          >
+            ⚠️ Primero carga un archivo CSV en la pestaña "Base Recibida"
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* SimpliRoute info banner */}
+      <AnimatePresence>
+        {searchMode === 'simpliroute' && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: 'auto' }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            style={{
+              padding: '14px 18px',
+              borderRadius: 12,
+              background: 'rgba(99,102,241,0.1)',
+              border: '1px solid rgba(99,102,241,0.3)',
+              color: '#a78bfa',
+              fontSize: 12,
+              fontWeight: 600,
+              display: 'flex', alignItems: 'center', gap: 8,
+              overflow: 'hidden',
+            }}
+          >
+            🌐 Modo SimpliRoute — Busca ISOs directamente en la API (no requiere CSV)
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Textarea glassmorphism */}
       <motion.div
@@ -104,7 +197,9 @@ export default function TabConsultar({ isoInput, onInputChange, onConsultar, onC
         <textarea
           value={isoInput}
           onChange={e => onInputChange(e.target.value)}
-          placeholder={'Ej:\nISO-00123\nISO-00456\nISO-00789'}
+          placeholder={searchMode === 'geosort'
+            ? 'Ej:\nISO-00123\nISO-00456\nISO-00789'
+            : 'Ej:\n400123456\n400789012\n(título de visita en SimpliRoute)'}
           style={{
             width: '100%',
             minHeight: 140,
@@ -120,8 +215,9 @@ export default function TabConsultar({ isoInput, onInputChange, onConsultar, onC
             transition: 'border-color 0.2s',
             boxSizing: 'border-box',
           }}
-          onFocus={e => e.currentTarget.style.borderColor = 'rgba(56,139,253,0.5)'}
+          onFocus={e => e.currentTarget.style.borderColor = searchMode === 'simpliroute' ? 'rgba(139,92,246,0.5)' : 'rgba(56,139,253,0.5)'}
           onBlur={e => e.currentTarget.style.borderColor = TC.border}
+          disabled={loading}
         />
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -129,12 +225,29 @@ export default function TabConsultar({ isoInput, onInputChange, onConsultar, onC
             variant="primary"
             size="lg"
             onClick={onConsultar}
-            disabled={!hasData || !isoInput.trim()}
-            style={{ flex: 1 }}
+            disabled={!canSearch}
+            style={{
+              flex: 1,
+              ...(searchMode === 'simpliroute' ? {
+                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                boxShadow: '0 2px 12px rgba(99,102,241,0.3)',
+              } : {}),
+            }}
           >
-            🔎 Consultar ISOs
+            {loading ? (
+              <>
+                <motion.span
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                  style={{ display: 'inline-block' }}
+                >⏳</motion.span>
+                {' '}{loadingProgress || 'Consultando…'}
+              </>
+            ) : (
+              <>🔎 Consultar ISOs {searchMode === 'simpliroute' ? '(API)' : ''}</>
+            )}
           </Btn>
-          <Btn variant="ghost" size="sm" onClick={onClear}>
+          <Btn variant="ghost" size="sm" onClick={onClear} disabled={loading}>
             ✕ Limpiar
           </Btn>
         </div>

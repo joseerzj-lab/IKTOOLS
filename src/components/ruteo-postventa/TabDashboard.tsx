@@ -21,25 +21,30 @@ interface Props {
   onUpdateRows: (rows: Row[]) => void
   onNotify: (msg: string) => void
   onClearAll: () => void
+  // Filter state (lifted to parent)
+  search: string
+  setSearch: (val: string) => void
+  colFilters: Record<string, Set<string>>
+  setColFilters: React.Dispatch<React.SetStateAction<Record<string, Set<string>>>>
+  sortCol: { col: string; dir: 'asc' | 'desc' } | null
+  setSortCol: React.Dispatch<React.SetStateAction<{ col: string; dir: 'asc' | 'desc' } | null>>
 }
 
 export default function TabDashboard({
   columns, rows, visibleCols, setVisibleCols,
   stats, onUpdateCell, onAddRow, onDeleteRow, onCrearNueva,
-  onUpdateRows, onNotify, onClearAll
+  onUpdateRows, onNotify, onClearAll,
+  search, setSearch, colFilters, setColFilters, sortCol, setSortCol
 }: Props) {
   const { theme } = useTheme()
   const TC = getThemeColors(theme)
 
-  const [search, setSearch] = useState('')
   const [showVisPanel, setShowVisPanel] = useState(false)
   const [showReplace, setShowReplace] = useState(false)
   const [replaceText, setReplaceText] = useState('')
   
-  // -- Excel-like filters
+  // -- Excel-like filters (filter menu UI state stays local)
   const [activeFilterCol, setActiveFilterCol] = useState<string | null>(null)
-  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({})
-  const [sortCol, setSortCol] = useState<{ col: string, dir: 'asc' | 'desc' } | null>(null)
   const [filterSearch, setFilterSearch] = useState('')
   const filterMenuRef = useRef<HTMLDivElement>(null)
 

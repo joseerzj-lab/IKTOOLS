@@ -5,6 +5,7 @@ import { useRef, useState } from 'react'
 import { useTableSelection } from '../../hooks/useTableSelection'
 import { Image as ImageIcon } from 'lucide-react'
 import ImageModal from '../ui/ImageModal'
+import type { SearchMode } from './TabConsultar'
 
 type ISORow = {
   iso: string
@@ -15,11 +16,16 @@ type ISORow = {
   motivo: string
   imageUrl: string
   direccion: string
+  // Optional SimpliRoute fields
+  conductor?: string
+  vehiculo?: string
+  fechaPlanificada?: string
 }
 
 interface Props {
-  results:    ISORow[]
-  onCopiar:   () => void
+  results:     ISORow[]
+  onCopiar:    () => void
+  searchMode?: SearchMode
 }
 
 function getEstadoClass(e: string): { bg: string; color: string } {
@@ -33,14 +39,17 @@ function getEstadoClass(e: string): { bg: string; color: string } {
   return { bg: 'rgba(240,136,62,0.15)', color: '#f0883e' }
 }
 
-const HEADERS = ['ISO', 'Dirección', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega', 'Fotos']
+const HEADERS_GEO = ['ISO', 'Dirección', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega', 'Fotos']
+const HEADERS_SIMPLI = ['ISO', 'Dirección', 'Estado', 'Conductor', 'Vehículo', 'Fecha Planificada', 'Comentario', 'Motivo', 'Fotos']
 
-export default function TabResultados({ results, onCopiar }: Props) {
+export default function TabResultados({ results, onCopiar, searchMode = 'geosort' }: Props) {
   const { theme } = useTheme()
   const TC = getThemeColors(theme)
   const found    = results.filter(r => r.found).length
   const notFound = results.filter(r => !r.found).length
   const tableRef = useRef<HTMLTableElement>(null)
+  const isSimpli = searchMode === 'simpliroute'
+  const HEADERS = isSimpli ? HEADERS_SIMPLI : HEADERS_GEO
   
   useTableSelection(tableRef)
 
@@ -66,6 +75,13 @@ export default function TabResultados({ results, onCopiar }: Props) {
       }
     }
   }
+
+  /* ── Render a table cell ── */
+  const cellStyle = (extra?: React.CSSProperties): React.CSSProperties => ({
+    padding: '8px 14px',
+    borderBottom: `1px solid ${TC.border}`,
+    ...extra,
+  })
 
   return (
     <div style={{
@@ -107,6 +123,16 @@ export default function TabResultados({ results, onCopiar }: Props) {
               <span style={{ fontSize: T.sm, color: TC.textFaint }}>no hallados</span>
             </div>
 
+            {isSimpli && (
+              <>
+                <div style={{ width: 1, height: 14, background: TC.border, flexShrink: 0 }} />
+                <span style={{
+                  fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                  background: 'rgba(99,102,241,0.15)', color: '#a78bfa',
+                }}>🌐 SimpliRoute</span>
+              </>
+            )}
+
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 10, fontFamily: T.fontMono, color: TC.textFaint }}>
                 {results.length} ISOs consultadas
@@ -130,8 +156,8 @@ export default function TabResultados({ results, onCopiar }: Props) {
           </div>
 
           {/* Table */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            <table ref={tableRef} style={{ width: '100%', borderCollapse: 'collapse', fontSize: T.base, fontFamily: T.fontMono }}>
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+            <table ref={tableRef} style={{ width: '100%', borderCollapse: 'collapse', fontSize: T.base, fontFamily: T.fontMono, minWidth: isSimpli ? 1000 : undefined }}>
               <thead>
                 <tr>
                   {HEADERS.map(h => (
@@ -143,6 +169,7 @@ export default function TabResultados({ results, onCopiar }: Props) {
                       background: TC.bgCard,
                       color: TC.textDisabled,
                       borderBottom: `1px solid ${TC.border}`,
+                      whiteSpace: 'nowrap',
                     }}>{h}</th>
                   ))}
                 </tr>
@@ -163,11 +190,8 @@ export default function TabResultados({ results, onCopiar }: Props) {
                         onMouseEnter={e => (e.currentTarget.style.background = !r.found ? 'rgba(248,81,73,0.08)' : 'rgba(255,255,255,0.02)')}
                         onMouseLeave={e => (e.currentTarget.style.background = !r.found ? 'rgba(248,81,73,0.04)' : 'transparent')}
                       >
-                        <td style={{
-                          padding: '8px 14px', fontWeight: 700,
-                          color: r.found ? '#eab308' : '#f87171',
-                          borderBottom: `1px solid ${TC.border}`,
-                        }}>
+                        {/* ISO */}
+                        <td style={cellStyle({ fontWeight: 700, color: r.found ? '#eab308' : '#f87171' })}>
                           {r.iso}
                           {!r.found && (
                             <span style={{
@@ -177,13 +201,13 @@ export default function TabResultados({ results, onCopiar }: Props) {
                             }}>NO HALLADO</span>
                           )}
                         </td>
-                        <td style={{
-                          padding: '8px 14px',
+                        {/* Dirección */}
+                        <td style={cellStyle({
                           whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                          color: TC.textSub, borderBottom: `1px solid ${TC.border}`,
-                          maxWidth: 200, fontSize: T.sm,
-                        }}>{r.direccion}</td>
-                        <td style={{ padding: '8px 14px', borderBottom: `1px solid ${TC.border}` }}>
+                          color: TC.textSub, maxWidth: 200, fontSize: T.sm,
+                        })}>{r.direccion}</td>
+                        {/* Estado */}
+                        <td style={cellStyle()}>
                           {r.estado && (
                             <span style={{
                               fontSize: 9, fontWeight: 700,
@@ -194,19 +218,34 @@ export default function TabResultados({ results, onCopiar }: Props) {
                             }}>{r.estado}</span>
                           )}
                         </td>
-                        <td style={{
-                          padding: '8px 14px',
+
+                        {/* === SimpliRoute extra columns === */}
+                        {isSimpli && (
+                          <>
+                            <td style={cellStyle({ color: TC.text, fontSize: T.sm, whiteSpace: 'nowrap' })}>
+                              {r.conductor || <span style={{ color: TC.textDisabled }}>—</span>}
+                            </td>
+                            <td style={cellStyle({ color: TC.text, fontSize: T.sm, whiteSpace: 'nowrap' })}>
+                              {r.vehiculo || <span style={{ color: TC.textDisabled }}>—</span>}
+                            </td>
+                            <td style={cellStyle({ color: TC.textFaint, fontSize: T.sm, whiteSpace: 'nowrap', fontFamily: T.fontMono })}>
+                              {r.fechaPlanificada || '—'}
+                            </td>
+                          </>
+                        )}
+
+                        {/* Comentario */}
+                        <td style={cellStyle({
                           whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                          color: TC.text, borderBottom: `1px solid ${TC.border}`,
-                          maxWidth: 300, fontSize: T.base,
-                        }}>{r.comentario}</td>
-                        <td style={{
-                          padding: '8px 14px',
+                          color: TC.text, maxWidth: 300, fontSize: T.base,
+                        })}>{r.comentario}</td>
+                        {/* Motivo */}
+                        <td style={cellStyle({
                           whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                          color: TC.text, borderBottom: `1px solid ${TC.border}`,
-                          maxWidth: 300, fontSize: T.base,
-                        }}>{r.motivo}</td>
-                        <td style={{ padding: '8px 14px', borderBottom: `1px solid ${TC.border}` }}>
+                          color: TC.text, maxWidth: 300, fontSize: T.base,
+                        })}>{r.motivo}</td>
+                        {/* Fotos */}
+                        <td style={cellStyle()}>
                           {r.imageUrl && r.imageUrl.trim().length > 0 ? (
                             <button 
                               onClick={() => openPhotos(r.imageUrl)}
@@ -242,3 +281,4 @@ export default function TabResultados({ results, onCopiar }: Props) {
 }
 
 export type { ISORow }
+

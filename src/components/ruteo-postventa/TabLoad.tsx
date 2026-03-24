@@ -275,7 +275,7 @@ export default function TabLoad({
                   placeholder="Pega texto de excel…"
                   value={pasteRepites}
                   onChange={e => setPasteRepites(e.target.value)}
-                  onPaste={() => setTimeout(() => { procesarRepites(); setActiveModal(null) }, 60)}
+                  onPaste={() => setTimeout(() => { procesarRepites() }, 60)}
                 />
                 <Btn onClick={() => { procesarRepites(); setActiveModal(null) }} size="sm" style={{ width: '100%' }}>Cargar</Btn>
               </div>
@@ -287,7 +287,7 @@ export default function TabLoad({
                   placeholder="Pega texto de excel…"
                   value={pasteRetiros}
                   onChange={e => setPasteRetiros(e.target.value)}
-                  onPaste={() => setTimeout(() => { procesarRetiros(); setActiveModal(null) }, 60)}
+                  onPaste={() => setTimeout(() => { procesarRetiros() }, 60)}
                 />
                 <Btn onClick={() => { procesarRetiros(); setActiveModal(null) }} size="sm" style={{ width: '100%' }}>Cargar</Btn>
               </div>
@@ -303,7 +303,7 @@ export default function TabLoad({
                 placeholder="Pega ISOs separadas por saltos de línea…"
                 value={pasteK8}
                 onChange={e => setPasteK8(e.target.value)}
-                onPaste={() => setTimeout(() => { procesarK8(); setActiveModal(null) }, 60)}
+                onPaste={() => setTimeout(() => { procesarK8() }, 60)}
               />
               <Btn onClick={() => { procesarK8(); setActiveModal(null) }} size="sm" style={{ width: '100%' }}>Procesar K8</Btn>
             </div>

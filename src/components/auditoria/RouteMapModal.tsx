@@ -25,7 +25,7 @@ export default function RouteMapModal({ veh, routeData, riskResults, conflicts, 
     if (!L) return
 
     const style = document.createElement('style')
-    style.innerHTML = `
+    style.innerHTML = `"nnnnnnnmnm,
       @keyframes pulse-error {
         0% { box-shadow: 0 0 0 0 rgba(255, 75, 75, 0.7); }
         70% { box-shadow: 0 0 0 12px rgba(255, 75, 75, 0); }

@@ -6,7 +6,9 @@ import GlassHeader, { GlassHeaderTab } from '../components/ui/GlassHeader'
 import TabCargarArchivo from '../components/consultor/TabCargarArchivo'
 import TabExplorar from '../components/consultor/TabExplorar'
 import TabConsultar from '../components/consultor/TabConsultar'
+import type { SearchMode } from '../components/consultor/TabConsultar'
 import TabResultados, { ISORow } from '../components/consultor/TabResultados'
+import { searchMultipleISOs } from '../utils/simpliRouteApi'
 
 const ISO_TABS: GlassHeaderTab[] = [
   { id: 'tab-cargar',     label: 'Base Recibida',          icon: '📥', badgeVariant: 'blue'   },
@@ -48,6 +50,11 @@ export default function ConsultorISOs() {
   const [isoInput, setIsoInput] = useState('')
   const [results, setResults] = useState<ISORow[]>([])
   const [toast, setToast] = useState('')
+
+  // Search mode & loading
+  const [searchMode, setSearchMode] = useState<SearchMode>('geosort')
+  const [apiLoading, setApiLoading] = useState(false)
+  const [apiProgress, setApiProgress] = useState('')
 
   const flash = useCallback((msg: string) => {
     setToast(msg)
@@ -106,7 +113,8 @@ export default function ConsultorISOs() {
     e.target.value = ''
   }
 
-  const consultar = () => {
+  /* ── GeoSort search (original) ── */
+  const consultarGeoSort = () => {
     if (!isoInput.trim() || !allData.size) return
     const isos = isoInput.split(/[\n\r,;\t ]+/).map(s => s.trim()).filter(Boolean)
     const res: ISORow[] = isos.map(iso => {
@@ -118,12 +126,71 @@ export default function ConsultorISOs() {
     setActiveTab('tab-resultados')
   }
 
+  /* ── SimpliRoute search ── */
+  const consultarSimpliRoute = async () => {
+    if (!isoInput.trim() || apiLoading) return
+    const isos = isoInput.split(/[\n\r,;\t ]+/).map(s => s.trim()).filter(Boolean)
+
+    setApiLoading(true)
+    setApiProgress(`0/${isos.length}`)
+
+    try {
+      const apiResults = await searchMultipleISOs(isos, (done, total) => {
+        setApiProgress(`${done}/${total}`)
+      })
+
+      // Map SimpliRouteResult → ISORow (which already has the same fields)
+      const mapped: ISORow[] = apiResults.map(r => ({
+        iso: r.iso,
+        found: r.found,
+        parentOrder: r.parentOrder,
+        estado: r.estado,
+        comentario: r.comentario,
+        motivo: r.motivo,
+        imageUrl: r.imageUrl,
+        direccion: r.direccion,
+        conductor: r.conductor,
+        vehiculo: r.vehiculo,
+        fechaPlanificada: r.fechaPlanificada,
+      }))
+
+      setResults(mapped)
+      setActiveTab('tab-resultados')
+      flash(`✓ ${mapped.filter(r => r.found).length} encontrados de ${isos.length} ISOs`)
+    } catch (err) {
+      flash('❌ Error al consultar SimpliRoute')
+      console.error(err)
+    } finally {
+      setApiLoading(false)
+      setApiProgress('')
+    }
+  }
+
+  const consultar = () => {
+    if (searchMode === 'simpliroute') {
+      consultarSimpliRoute()
+    } else {
+      consultarGeoSort()
+    }
+  }
+
   const copiarTabla = () => {
     if (!results.length) return
-    const headers = ['ISO', 'Dirección', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega']
+    const isSimp = searchMode === 'simpliroute'
+    const headers = isSimp
+      ? ['ISO', 'Dirección', 'Estado', 'Conductor', 'Vehículo', 'Fecha Planificada', 'Comentario', 'Motivo']
+      : ['ISO', 'Dirección', 'Estado', 'Comentario No Entrega', 'Motivo No Entrega']
     let tsv = headers.join('\t') + '\n'
     results.forEach(r => {
-      tsv += [r.iso + (!r.found ? ' [NO HALLADO]' : ''), r.direccion, r.estado, r.comentario, r.motivo].join('\t') + '\n'
+      if (isSimp) {
+        tsv += [
+          r.iso + (!r.found ? ' [NO HALLADO]' : ''),
+          r.direccion, r.estado, r.conductor || '', r.vehiculo || '',
+          r.fechaPlanificada || '', r.comentario, r.motivo,
+        ].join('\t') + '\n'
+      } else {
+        tsv += [r.iso + (!r.found ? ' [NO HALLADO]' : ''), r.direccion, r.estado, r.comentario, r.motivo].join('\t') + '\n'
+      }
     })
     navigator.clipboard?.writeText(tsv).then(() => flash('✓ Tabla copiada al portapapeles'))
   }
@@ -195,7 +262,17 @@ export default function ConsultorISOs() {
               transition={{ duration: 0.2 }}
               className="absolute inset-0 overflow-y-auto"
             >
-              <TabConsultar isoInput={isoInput} onInputChange={setIsoInput} onConsultar={consultar} onClear={clearConsultar} hasData={allData.size > 0} />
+              <TabConsultar
+                isoInput={isoInput}
+                onInputChange={setIsoInput}
+                onConsultar={consultar}
+                onClear={clearConsultar}
+                hasData={allData.size > 0}
+                searchMode={searchMode}
+                onSearchModeChange={setSearchMode}
+                loading={apiLoading}
+                loadingProgress={apiProgress}
+              />
             </motion.div>
           )}
 
@@ -208,7 +285,7 @@ export default function ConsultorISOs() {
               transition={{ duration: 0.2 }}
               className="absolute inset-0 overflow-y-auto"
             >
-              <TabResultados results={results} onCopiar={copiarTabla} />
+              <TabResultados results={results} onCopiar={copiarTabla} searchMode={searchMode} />
             </motion.div>
           )}
         </AnimatePresence>
