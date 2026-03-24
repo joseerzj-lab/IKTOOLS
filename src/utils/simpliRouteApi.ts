@@ -120,10 +120,17 @@ export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> 
     parentOrder: trimmed, imageUrl: '',
   })
 
-  const visits = await apiGet('/v1/routes/visits/', { search: trimmed })
+  const fourMonthsAgo = new Date()
+  fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 4)
+  const dateStr = fourMonthsAgo.toISOString().split('T')[0]
+
+  const visits = await apiGet('/v1/routes/visits/', { 
+    search: trimmed, 
+    planned_date__gte: dateStr 
+  })
   if (!visits || !Array.isArray(visits) || visits.length === 0) return [notFound()]
 
-  // Filter exact title match
+  // Filter exact title match (ISO)
   const matched = visits.filter((v: any) =>
     String(v.title || '').trim().toLowerCase() === trimmed.toLowerCase()
   )
