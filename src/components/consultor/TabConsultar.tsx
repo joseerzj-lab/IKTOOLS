@@ -46,56 +46,10 @@ function Btn({ children, variant = 'primary', size = 'md', style, onClick, disab
   )
 }
 
-/* ── Mode Switch (iOS-style toggle) ──────────────────────── */
-function ModeSwitch({ mode, onChange }: { mode: SearchMode; onChange: (m: SearchMode) => void }) {
-  const isSimpli = mode === 'simpliroute'
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-      <span style={{
-        fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
-        color: !isSimpli ? '#3fb950' : 'rgba(255,255,255,0.35)',
-        transition: 'color 0.25s',
-      }}>📂 GeoSort</span>
-
-      <motion.div
-        onClick={() => onChange(isSimpli ? 'geosort' : 'simpliroute')}
-        style={{
-          width: 48, height: 26, borderRadius: 13, cursor: 'pointer',
-          background: isSimpli
-            ? 'linear-gradient(135deg, #6366f1, #8b5cf6)'
-            : 'linear-gradient(135deg, #22c55e, #16a34a)',
-          padding: 3,
-          display: 'flex', alignItems: 'center',
-          boxShadow: isSimpli
-            ? '0 2px 12px rgba(99,102,241,0.4), inset 0 1px 0 rgba(255,255,255,0.2)'
-            : '0 2px 12px rgba(34,197,94,0.4), inset 0 1px 0 rgba(255,255,255,0.2)',
-          transition: 'background 0.3s, box-shadow 0.3s',
-        }}
-        whileTap={{ scale: 0.92 }}
-      >
-        <motion.div
-          animate={{ x: isSimpli ? 22 : 0 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-          style={{
-            width: 20, height: 20, borderRadius: '50%',
-            background: '#fff',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
-          }}
-        />
-      </motion.div>
-
-      <span style={{
-        fontSize: 11, fontWeight: 700, letterSpacing: '0.03em',
-        color: isSimpli ? '#a78bfa' : 'rgba(255,255,255,0.35)',
-        transition: 'color 0.25s',
-      }}>🌐 SimpliRoute</span>
-    </div>
-  )
-}
 
 export default function TabConsultar({
   isoInput, onInputChange, onConsultar, onClear, hasData,
-  searchMode, onSearchModeChange, loading, loadingProgress,
+  searchMode, loading, loadingProgress,
 }: Props) {
   const { theme } = useTheme()
   const TC = getThemeColors(theme)
@@ -114,19 +68,16 @@ export default function TabConsultar({
       transition: 'background 0.25s, color 0.25s',
     }}>
 
-      {/* Header + Switch */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: TC.text, margin: 0 }}>
-            Consultar ISOs
-          </h2>
-          <p style={{ fontSize: 12, color: TC.textFaint, margin: '4px 0 0' }}>
-            {searchMode === 'geosort'
-              ? 'Busca en el archivo CSV cargado (GeoSort / ParentOrder).'
-              : 'Busca directamente en SimpliRoute por título de ISO.'}
-          </p>
-        </div>
-        <ModeSwitch mode={searchMode} onChange={onSearchModeChange} />
+      {/* Header */}
+      <div>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: TC.text, margin: 0 }}>
+          Consultar ISOs
+        </h2>
+        <p style={{ fontSize: 12, color: TC.textFaint, margin: '4px 0 0' }}>
+          {searchMode === 'geosort'
+            ? 'Busca en el archivo CSV cargado (GeoSort / ParentOrder).'
+            : 'Busca directamente en SimpliRoute por título de ISO.'}
+        </p>
       </div>
 
       {/* No data warning — only in GeoSort mode */}

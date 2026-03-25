@@ -120,19 +120,20 @@ export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> 
     parentOrder: trimmed, imageUrl: '',
   })
 
-  const fourMonthsAgo = new Date()
-  fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 4)
-  const dateStr = fourMonthsAgo.toISOString().split('T')[0]
+  // Buscar desde el 01-01 del año actual (igual que script GAS de referencia)
+  const startOfYear = `${new Date().getFullYear()}-01-01`
 
-  const visits = await apiGet('/v1/routes/visits/', { 
-    search: trimmed, 
-    planned_date__gte: dateStr 
+  const visits = await apiGet('/v1/routes/visits/', {
+    search: trimmed,
+    planned_date__gte: startOfYear,
   })
   if (!visits || !Array.isArray(visits) || visits.length === 0) return [notFound()]
 
-  // Filter exact title match (ISO)
+  // Match por título exacto O por referencia exacta (cubre todos los registros de la ISO)
+  const trimmedLower = trimmed.toLowerCase()
   const matched = visits.filter((v: any) =>
-    String(v.title || '').trim().toLowerCase() === trimmed.toLowerCase()
+    String(v.title || '').trim().toLowerCase() === trimmedLower ||
+    String(v.reference || '').trim().toLowerCase() === trimmedLower
   )
   if (matched.length === 0) return [notFound()]
 

@@ -137,8 +137,12 @@ export default function TabLoad({
     
     const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
     const rawHeaders = lines[0].split(sep).map(sanH)
-    const cIsoIdx = rawHeaders.findIndex(h => h.includes("ASO GENERADA") || h.includes("ASO") || h.includes("ISO"))
-    if (cIsoIdx === -1) return
+    // Usamos SOLO la columna "ASO GENERADA" (normalizada) como ISO
+    const cIsoIdx = rawHeaders.findIndex(h => sanH(h) === "ASO GENERADA")
+    if (cIsoIdx === -1) {
+      alert('No se encontró la columna "ASO GENERADA" en la tabla pegada.')
+      return
+    }
     
     const isosGeneradas: string[] = []
     const newRows: Row[] = []
@@ -204,7 +208,7 @@ export default function TabLoad({
     { id: 'projects', icon: '🏗️', title: 'Proyectos', desc: 'Carga el documento para cruzar proyectos Leslie' },
     { id: 'duplicates', icon: '👯', title: 'Duplicados', desc: 'Detecta ISOs duplicadas subiendo el Plan Actual' },
     { id: 'quick', icon: '⚡', title: 'Carga Rápida', desc: 'Pegar repites, retiros o K8 directo desde Excel' },
-    { id: 'eyr', icon: '🔄', title: 'Ship & Return', desc: 'Genera ASOs y cruza orígenes desde archivo' },
+    { id: 'eyr', icon: '🔄', title: 'Cargar Envio y Retiro', desc: 'Genera ASOs y cruza orígenes desde archivo' },
     { id: 'crossing', icon: '🎯', title: 'Cruce Destino', desc: 'Cruza plan y conversión de transportes' }
   ]
 
@@ -312,7 +316,7 @@ export default function TabLoad({
       case 'eyr':
         return (
           <div className="flex flex-col gap-5">
-            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🔄</span> Ship & Return</h3>
+            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🔄</span> Cargar Envio y Retiro</h3>
             
             <div className="flex flex-col gap-2">
               <span className="text-xs font-bold" style={{ color: TC.textSub }}>Paso 1: Pegar ISOs (Genera ASOs)</span>
