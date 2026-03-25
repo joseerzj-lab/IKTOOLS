@@ -122,12 +122,9 @@ function dateRange(monthsBack: number): string[] {
 }
 
 /**
- * Search for a single ISO title.
- * Strategy:
- *   1. Try a single search call with no date filter → if API returns history, done in 1 call.
- *   2. If that returns 0 results, fall back to day-by-day iteration over the last 2 months
- *      (batched 7 days at a time in parallel).
- * Detail + pictures are fetched in PARALLEL for each matched visit.
+ * Search for a single ISO title across the last 2 months.
+ * All date queries are fired in PARALLEL at once — total wait ≈ one request round-trip.
+ * Detail + pictures are also fetched in parallel per matched visit.
  */
 export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> {
   const trimmed = isoTitle.trim()
@@ -143,83 +140,72 @@ export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> 
   })
 
   const trimmedLower = trimmed.toLowerCase()
-
   const matchVisit = (v: any) =>
     String(v.title || '').trim().toLowerCase() === trimmedLower ||
     String(v.reference || '').trim().toLowerCase() === trimmedLower
 
-  // ── Strategy 1: single call without date filter ──
-  const visitMap = new Map<string|number, any>()
-  const singleResult = await apiGet('/v1/routes/visits/', { search: trimmed }).catch(() => null)
-  if (Array.isArray(singleResult)) {
-    for (const v of singleResult) {
-      if (matchVisit(v) && v.id !== undefined) visitMap.set(v.id, v)
-    }
-  }
+  // Fire ALL date queries in parallel — no sequential batching
+  const dates = dateRange(2)
+  const allResults = await Promise.all(
+    dates.map(d => apiGet('/v1/routes/visits/', { planned_date: d, search: trimmed }).catch(() => null))
+  )
 
-  // ── Strategy 2: day-by-day fallback (last 2 months) ──
-  if (visitMap.size === 0) {
-    const dates = dateRange(2)
-    const BATCH = 7
-    for (let i = 0; i < dates.length; i += BATCH) {
-      const dayBatch = dates.slice(i, i + BATCH)
-      const dayResults = await Promise.all(
-        dayBatch.map(d => apiGet('/v1/routes/visits/', { planned_date: d, search: trimmed }).catch(() => null))
-      )
-      for (const visits of dayResults) {
-        if (!Array.isArray(visits)) continue
-        for (const v of visits) {
-          if (matchVisit(v) && v.id !== undefined && !visitMap.has(v.id)) visitMap.set(v.id, v)
-        }
-      }
+  // Deduplicate matching visits by id
+  const visitMap = new Map<string|number, any>()
+  for (const visits of allResults) {
+    if (!Array.isArray(visits)) continue
+    for (const v of visits) {
+      if (matchVisit(v) && v.id !== undefined && !visitMap.has(v.id)) visitMap.set(v.id, v)
     }
   }
 
   if (visitMap.size === 0) return [notFound()]
 
-  const results: SimpliRouteResult[] = []
+  // Fetch details + pictures for all matched visits in parallel
+  const results: SimpliRouteResult[] = await Promise.all(
+    [...visitMap.values()].map(async v => {
+      const [d, extraPics] = await Promise.all([
+        apiGet(`/v1/plans/visits/${v.id}/detail/`).catch(() => ({})) || {},
+        apiGet(`/v1/routes/visits/${v.id}/pictures/`).catch(() => []),
+      ])
 
-  for (const v of visitMap.values()) {
-    const [d, extraPics] = await Promise.all([
-      apiGet(`/v1/plans/visits/${v.id}/detail/`).catch(() => ({})) || {},
-      v.id ? apiGet(`/v1/routes/visits/${v.id}/pictures/`).catch(() => []) : Promise.resolve([]),
-    ])
+      const photoSet = new Set<string>()
+      for (const u of extractPhotosFromArr(d?.pictures)) photoSet.add(u)
+      for (const u of extractPhotosFromArr(v?.pictures)) photoSet.add(u)
+      for (const u of extractPhotosFromArr(extraPics)) photoSet.add(u)
+      const allPhotos = [...photoSet]
 
-    const photoSet = new Set<string>()
-    for (const u of extractPhotosFromArr(d?.pictures)) photoSet.add(u)
-    for (const u of extractPhotosFromArr(v?.pictures)) photoSet.add(u)
-    for (const u of extractPhotosFromArr(extraPics)) photoSet.add(u)
-    const allPhotos = [...photoSet]
+      const obsId = (d?.checkout_observation !== undefined ? d.checkout_observation : v.checkout_observation) || ''
+      const comments = String((d?.checkout_comment !== undefined ? d.checkout_comment : v.checkout_comment) || '')
 
-    const obsId = (d?.checkout_observation !== undefined ? d.checkout_observation : v.checkout_observation) || ''
-    const comments = String((d?.checkout_comment !== undefined ? d.checkout_comment : v.checkout_comment) || '')
-
-    results.push({
-      iso: trimmed,
-      found: true,
-      idReferencia: String(v.reference || ''),
-      fechaPlanificada: String(v.planned_date || ''),
-      conductor: String(d?.driver_name || v.driver_name || ''),
-      vehiculo: String(d?.vehicle_name || v.vehicle_name || ''),
-      titulo: String(v.title || ''),
-      direccion: String(v.address || ''),
-      latitud: String(v.latitude ?? ''),
-      longitud: String(v.longitude ?? ''),
-      carga: String(v.load ?? ''),
-      carga2: String(v.load_2 ?? ''),
-      fotoUrl: allPhotos.join(', '),
-      estado: mapStatus(v.status),
-      comentario: comments,
-      motivo: String(obsId),
-      trackingId: String(v.tracking_id || ''),
-      parentOrder: String(v.reference || v.title || ''),
-      imageUrl: allPhotos.join(', '),
+      return {
+        iso: trimmed,
+        found: true,
+        idReferencia: String(v.reference || ''),
+        fechaPlanificada: String(v.planned_date || ''),
+        conductor: String(d?.driver_name || v.driver_name || ''),
+        vehiculo: String(d?.vehicle_name || v.vehicle_name || ''),
+        titulo: String(v.title || ''),
+        direccion: String(v.address || ''),
+        latitud: String(v.latitude ?? ''),
+        longitud: String(v.longitude ?? ''),
+        carga: String(v.load ?? ''),
+        carga2: String(v.load_2 ?? ''),
+        fotoUrl: allPhotos.join(', '),
+        estado: mapStatus(v.status),
+        comentario: comments,
+        motivo: String(obsId),
+        trackingId: String(v.tracking_id || ''),
+        parentOrder: String(v.reference || v.title || ''),
+        imageUrl: allPhotos.join(', '),
+      } as SimpliRouteResult
     })
-  }
+  )
 
   results.sort((a, b) => b.fechaPlanificada.localeCompare(a.fechaPlanificada))
   return results
 }
+
 
 
 /**
