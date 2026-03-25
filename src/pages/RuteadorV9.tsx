@@ -226,23 +226,10 @@ export default function RuteadorV9() {
         })
         
         const isos = pvRows.map(r => String(r[cTit] || "")).filter(iso => iso && iso !== "INICIO" && iso !== "FIN")
-        
-        // Populate proyectosData for Leslie template (Req 3)
-        const cDir = keys.find(k => k.includes("DIRECCI") || k.includes("DOMICILIO"))
-        const formattedProy = pvRows.filter(r => {
-          const iso = String(r[cTit] || "").trim().toUpperCase()
-          return iso && iso !== "INICIO" && iso !== "FIN"
-        }).map(r => ({
-          _tipo: 'dos',
-          'VEHÍCULO': String(r[cVeh || ''] || ""),
-          ISO: String(r[cTit] || "").trim().toUpperCase(),
-          DIRECCIÓN: String(r[cDir || ''] || "")
-        }))
 
         setPvPlanData(isos)
         setPvPlanName(file.name)
-        setProyectosData(formattedProy)
-        flash(`✓ ${isos.length} ISOs de Postventa cargadas (y enviadas a Leslie)`)
+        flash(`✓ ${isos.length} ISOs de Postventa cargadas para revisión de duplicados`)
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer el plan') }

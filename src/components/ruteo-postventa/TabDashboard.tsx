@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Search, Columns3, Plus, Trash2, Filter, ArrowDownAZ, ArrowUpZA, FileDown, FileSpreadsheet, Image as ImageIcon } from 'lucide-react'
+import { Search, Columns3, Plus, Trash2, Filter, ArrowDownAZ, ArrowUpZA, FileDown, FileSpreadsheet, Image as ImageIcon, ClipboardCopy } from 'lucide-react'
 import { DropdownMenu } from '../ui/dropdown-menu'
 import { exportElementAsImage } from '../../utils/exportUtils'
 import type { Row, Stats } from './types'
@@ -331,6 +331,32 @@ export default function TabDashboard({
     onNotify('✓ Excel exportado')
   }
 
+  const LESLIE_GESTIONES = new Set(['ENVIO Y RETIRO', 'RETIRO', 'REPITE PROYECTO', 'REPITE LESLIE'])
+
+  const copiarLeslie = () => {
+    const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
+    const isos = getFilteredAndSorted()
+      .filter(r => LESLIE_GESTIONES.has(String(r['GESTIÓN'] || '').trim().toUpperCase()))
+      .map(r => String(r[isoCol] || '').trim())
+      .filter(Boolean)
+    if (!isos.length) return onNotify('ℹ️ Sin ISOs Leslie en la vista actual')
+    navigator.clipboard.writeText(isos.join(', '))
+      .then(() => onNotify(`✓ ${isos.length} ISOs Leslie copiadas`))
+      .catch(() => onNotify('⚠️ Error al copiar'))
+  }
+
+  const copiarHD = () => {
+    const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
+    const isos = getFilteredAndSorted()
+      .filter(r => !LESLIE_GESTIONES.has(String(r['GESTIÓN'] || '').trim().toUpperCase()))
+      .map(r => String(r[isoCol] || '').trim())
+      .filter(Boolean)
+    if (!isos.length) return onNotify('ℹ️ Sin ISOs HD en la vista actual')
+    navigator.clipboard.writeText(isos.join(', '))
+      .then(() => onNotify(`✓ ${isos.length} ISOs HD copiadas`))
+      .catch(() => onNotify('⚠️ Error al copiar'))
+  }
+
   const filtered = getFilteredAndSorted()
   const vCols = columns.filter(c => visibleCols.has(c))
 
@@ -404,11 +430,29 @@ export default function TabDashboard({
             <DropdownMenu
               options={[
                 { label: 'Exportar Imagen (Fondo Blanco)', onClick: exportToImage, Icon: <ImageIcon size={14} /> },
-                { label: 'Exportar Datos (CSV)', onClick: exportTableCSV, Icon: <FileSpreadsheet size={14} /> }
+                { label: 'Exportar Datos (CSV)', onClick: exportTableCSV, Icon: <FileSpreadsheet size={14} /> },
+                { label: 'Copiar ISOs Leslie', onClick: copiarLeslie, Icon: <ClipboardCopy size={14} /> },
+                { label: 'Copiar ISOs HD', onClick: copiarHD, Icon: <ClipboardCopy size={14} /> },
               ]}
             >
               <FileDown size={14} className="mr-2" /> Exportar
             </DropdownMenu>
+            <button
+              onClick={copiarLeslie}
+              className="text-[10px] font-bold px-2 py-1.5 rounded transition-colors hover:bg-emerald-500/10 flex items-center gap-1"
+              style={{ color: '#10b981', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', cursor: 'pointer' }}
+              title="Copia ISOs de gestión Leslie (ENVIO Y RETIRO, RETIRO, REPITE PROYECTO, REPITE LESLIE)"
+            >
+              <ClipboardCopy size={12} /> Rutear Leslie
+            </button>
+            <button
+              onClick={copiarHD}
+              className="text-[10px] font-bold px-2 py-1.5 rounded transition-colors hover:bg-violet-500/10 flex items-center gap-1"
+              style={{ color: '#8b5cf6', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.3)', cursor: 'pointer' }}
+              title="Copia ISOs de otras gestiones (HD, REPITE, SOLO ENVIO, PROYECTO, etc.)"
+            >
+              <ClipboardCopy size={12} /> Rutear HD
+            </button>
             <button
               onClick={() => setShowVisPanel(p => !p)}
               className="text-[10px] font-bold px-2 py-1.5 rounded transition-colors hover:bg-white/10 flex items-center gap-1"

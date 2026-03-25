@@ -199,10 +199,10 @@ export default function Ruteo24h() {
 
       addLog(`Cruce: ${matched} encontradas, ${unmatched} sin match`, unmatched > 0 ? 'warn' : 'ok')
 
-      const PS_VEHS = new Set(['VEH99', 'VEH101', 'VEH102', 'POST VENTA', 'POSTVENTA'])
+      const PS_VEHS = new Set(['VEH99', 'VEH101', 'VEH102', 'POST VENTA', 'POSTVENTA', 'VEH01 POSTVENTA', 'VEH01 POST VENTA'])
       const isPostSales = (r: any) => {
         const v = (r.vehFin || r.vehIni || '').toUpperCase()
-        return PS_VEHS.has(v) || v.includes('POST') || v.includes('POSTVENTA')
+        return PS_VEHS.has(v) || v.includes('POSTVENTA') || v.includes('POST VENTA') || v.includes('POST SALES')
       }
 
       const postSalesRows = resultado.filter(r => r._found && isPostSales(r)).map(r => ({ ...r, vehFin: 'VEH99' }))
