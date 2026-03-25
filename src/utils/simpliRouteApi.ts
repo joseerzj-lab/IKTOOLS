@@ -103,9 +103,29 @@ function mapStatus(status: any): string {
   return String(status || '')
 }
 
+/** Generate array of YYYY-MM-DD strings from startDate to today (inclusive) */
+function dateRange(monthsBack: number): string[] {
+  const dates: string[] = []
+  const today = new Date()
+  const start = new Date()
+  start.setMonth(start.getMonth() - monthsBack)
+  // iterate day by day
+  const cur = new Date(start)
+  while (cur <= today) {
+    const y = cur.getFullYear()
+    const m = String(cur.getMonth() + 1).padStart(2, '0')
+    const d = String(cur.getDate()).padStart(2, '0')
+    dates.push(`${y}-${m}-${d}`)
+    cur.setDate(cur.getDate() + 1)
+  }
+  return dates
+}
+
 /**
- * Search for a single ISO title using the search parameter.
- * Detail + pictures are fetched in PARALLEL for speed.
+ * Search for a single ISO title across the last 2 months.
+ * Queries each day individually (planned_date is the only supported filter),
+ * batching 7 days at a time in parallel for speed.
+ * Detail + pictures are fetched in PARALLEL for each matched visit.
  */
 export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> {
   const trimmed = isoTitle.trim()
@@ -120,26 +140,35 @@ export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> 
     parentOrder: trimmed, imageUrl: '',
   })
 
-  // Buscar desde el 01-01 del año actual (igual que script GAS de referencia)
-  const startOfYear = `${new Date().getFullYear()}-01-01`
-
-  const visits = await apiGet('/v1/routes/visits/', {
-    search: trimmed,
-    planned_date__gte: startOfYear,
-  })
-  if (!visits || !Array.isArray(visits) || visits.length === 0) return [notFound()]
-
-  // Match por título exacto O por referencia exacta (cubre todos los registros de la ISO)
   const trimmedLower = trimmed.toLowerCase()
-  const matched = visits.filter((v: any) =>
-    String(v.title || '').trim().toLowerCase() === trimmedLower ||
-    String(v.reference || '').trim().toLowerCase() === trimmedLower
-  )
-  if (matched.length === 0) return [notFound()]
+  const dates = dateRange(2) // 2 months back
+  const BATCH = 7 // parallel days per batch
+
+  // Collect all matching visits across all dates (deduplicated by id)
+  const visitMap = new Map<string|number, any>()
+
+  for (let i = 0; i < dates.length; i += BATCH) {
+    const dayBatch = dates.slice(i, i + BATCH)
+    const dayResults = await Promise.all(
+      dayBatch.map(d => apiGet('/v1/routes/visits/', { planned_date: d, search: trimmed }).catch(() => null))
+    )
+    for (const visits of dayResults) {
+      if (!Array.isArray(visits)) continue
+      for (const v of visits) {
+        const titleMatch = String(v.title || '').trim().toLowerCase() === trimmedLower
+        const refMatch   = String(v.reference || '').trim().toLowerCase() === trimmedLower
+        if ((titleMatch || refMatch) && v.id !== undefined && !visitMap.has(v.id)) {
+          visitMap.set(v.id, v)
+        }
+      }
+    }
+  }
+
+  if (visitMap.size === 0) return [notFound()]
 
   const results: SimpliRouteResult[] = []
 
-  for (const v of matched) {
+  for (const v of visitMap.values()) {
     // Fetch detail AND pictures in PARALLEL for speed
     const [d, extraPics] = await Promise.all([
       apiGet(`/v1/plans/visits/${v.id}/detail/`).catch(() => ({})) || {},
@@ -178,6 +207,9 @@ export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> 
       imageUrl: allPhotos.join(', '),
     })
   }
+
+  // Sort by planned date descending (most recent first)
+  results.sort((a, b) => b.fechaPlanificada.localeCompare(a.fechaPlanificada))
 
   return results
 }
