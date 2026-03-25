@@ -122,9 +122,11 @@ function dateRange(monthsBack: number): string[] {
 }
 
 /**
- * Search for a single ISO title across the last 2 months.
- * Queries each day individually (planned_date is the only supported filter),
- * batching 7 days at a time in parallel for speed.
+ * Search for a single ISO title.
+ * Strategy:
+ *   1. Try a single search call with no date filter → if API returns history, done in 1 call.
+ *   2. If that returns 0 results, fall back to day-by-day iteration over the last 2 months
+ *      (batched 7 days at a time in parallel).
  * Detail + pictures are fetched in PARALLEL for each matched visit.
  */
 export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> {
@@ -141,24 +143,33 @@ export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> 
   })
 
   const trimmedLower = trimmed.toLowerCase()
-  const dates = dateRange(2) // 2 months back
-  const BATCH = 7 // parallel days per batch
 
-  // Collect all matching visits across all dates (deduplicated by id)
+  const matchVisit = (v: any) =>
+    String(v.title || '').trim().toLowerCase() === trimmedLower ||
+    String(v.reference || '').trim().toLowerCase() === trimmedLower
+
+  // ── Strategy 1: single call without date filter ──
   const visitMap = new Map<string|number, any>()
+  const singleResult = await apiGet('/v1/routes/visits/', { search: trimmed }).catch(() => null)
+  if (Array.isArray(singleResult)) {
+    for (const v of singleResult) {
+      if (matchVisit(v) && v.id !== undefined) visitMap.set(v.id, v)
+    }
+  }
 
-  for (let i = 0; i < dates.length; i += BATCH) {
-    const dayBatch = dates.slice(i, i + BATCH)
-    const dayResults = await Promise.all(
-      dayBatch.map(d => apiGet('/v1/routes/visits/', { planned_date: d, search: trimmed }).catch(() => null))
-    )
-    for (const visits of dayResults) {
-      if (!Array.isArray(visits)) continue
-      for (const v of visits) {
-        const titleMatch = String(v.title || '').trim().toLowerCase() === trimmedLower
-        const refMatch   = String(v.reference || '').trim().toLowerCase() === trimmedLower
-        if ((titleMatch || refMatch) && v.id !== undefined && !visitMap.has(v.id)) {
-          visitMap.set(v.id, v)
+  // ── Strategy 2: day-by-day fallback (last 2 months) ──
+  if (visitMap.size === 0) {
+    const dates = dateRange(2)
+    const BATCH = 7
+    for (let i = 0; i < dates.length; i += BATCH) {
+      const dayBatch = dates.slice(i, i + BATCH)
+      const dayResults = await Promise.all(
+        dayBatch.map(d => apiGet('/v1/routes/visits/', { planned_date: d, search: trimmed }).catch(() => null))
+      )
+      for (const visits of dayResults) {
+        if (!Array.isArray(visits)) continue
+        for (const v of visits) {
+          if (matchVisit(v) && v.id !== undefined && !visitMap.has(v.id)) visitMap.set(v.id, v)
         }
       }
     }
@@ -169,13 +180,11 @@ export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> 
   const results: SimpliRouteResult[] = []
 
   for (const v of visitMap.values()) {
-    // Fetch detail AND pictures in PARALLEL for speed
     const [d, extraPics] = await Promise.all([
       apiGet(`/v1/plans/visits/${v.id}/detail/`).catch(() => ({})) || {},
       v.id ? apiGet(`/v1/routes/visits/${v.id}/pictures/`).catch(() => []) : Promise.resolve([]),
     ])
 
-    // Merge photos from all sources (no duplicates)
     const photoSet = new Set<string>()
     for (const u of extractPhotosFromArr(d?.pictures)) photoSet.add(u)
     for (const u of extractPhotosFromArr(v?.pictures)) photoSet.add(u)
@@ -208,11 +217,10 @@ export async function searchISO(isoTitle: string): Promise<SimpliRouteResult[]> 
     })
   }
 
-  // Sort by planned date descending (most recent first)
   results.sort((a, b) => b.fechaPlanificada.localeCompare(a.fechaPlanificada))
-
   return results
 }
+
 
 /**
  * Search multiple ISOs with concurrency limit of 5.
