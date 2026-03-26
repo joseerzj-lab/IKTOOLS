@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { Search, Columns3, Plus, Trash2, Filter, ArrowDownAZ, ArrowUpZA, FileDown, FileSpreadsheet, Image as ImageIcon, ClipboardCopy } from 'lucide-react'
+import { Search, Columns3, Plus, Trash2, Filter, ArrowDownAZ, ArrowUpZA, FileDown, FileSpreadsheet, Image as ImageIcon, ClipboardCopy, FileJson } from 'lucide-react'
 import { DropdownMenu } from '../ui/dropdown-menu'
 import { exportElementAsImage } from '../../utils/exportUtils'
 import type { Row, Stats } from './types'
@@ -28,13 +28,15 @@ interface Props {
   setColFilters: React.Dispatch<React.SetStateAction<Record<string, Set<string>>>>
   sortCol: { col: string; dir: 'asc' | 'desc' } | null
   setSortCol: React.Dispatch<React.SetStateAction<{ col: string; dir: 'asc' | 'desc' } | null>>
+  onExportJSON: () => void
 }
 
 export default function TabDashboard({
   columns, rows, visibleCols, setVisibleCols,
   stats, onUpdateCell, onAddRow, onDeleteRow, onCrearNueva,
   onUpdateRows, onNotify, onClearAll,
-  search, setSearch, colFilters, setColFilters, sortCol, setSortCol
+  search, setSearch, colFilters, setColFilters, sortCol, setSortCol,
+  onExportJSON
 }: Props) {
   const { theme } = useTheme()
   const TC = getThemeColors(theme)
@@ -265,18 +267,28 @@ export default function TabDashboard({
     )
   }
 
-  const handleDuplicateRow = (idx: number) => {
+  const handleDuplicateRow = (filteredIdx: number) => {
+    const currentRows = getFilteredAndSorted()
+    const row = currentRows[filteredIdx]
+    if (!row) return
+    const originalIdx = rows.indexOf(row)
+    if (originalIdx < 0) return
     const newRows = [...rows]
-    newRows.splice(idx + 1, 0, { ...rows[idx] })
+    newRows.splice(originalIdx + 1, 0, { ...row })
     onUpdateRows(newRows)
     onNotify('✓ Fila duplicada')
   }
 
-  const handleCycleGestion = (idx: number) => {
+  const handleCycleGestion = (filteredIdx: number) => {
     const gestions = ['REPITE', 'RETIRO', 'K8', 'ENVIO Y RETIRO', 'SOLO ENVIO', 'PROYECTO']
-    const current = String(rows[idx]['GESTIÓN'] || '').toUpperCase()
+    const currentRows = getFilteredAndSorted()
+    const row = currentRows[filteredIdx]
+    if (!row) return
+    const originalIdx = rows.indexOf(row)
+    if (originalIdx < 0) return
+    const current = String(row['GESTIÓN'] || '').toUpperCase()
     const nextIdx = (gestions.indexOf(current) + 1) % gestions.length
-    onUpdateCell(idx, 'GESTIÓN', gestions[nextIdx])
+    onUpdateCell(originalIdx, 'GESTIÓN', gestions[nextIdx])
   }
 
   const getFilteredAndSorted = () => {
@@ -470,6 +482,14 @@ export default function TabDashboard({
                 <Trash2 size={12} /> Limpiar
               </button>
             )}
+            <button
+              onClick={onExportJSON}
+              className="text-[10px] font-bold px-3 py-1.5 rounded transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
+              style={{ color: '#fff', background: '#3b82f6', border: '1px solid #2563eb', cursor: 'pointer', boxShadow: '0 2px 8px rgba(59, 130, 246, 0.4)' }}
+              title="Guardar sesión actual como archivo JSON"
+            >
+              <FileJson size={12} /> Guardar
+            </button>
           </div>
         </div>
         
@@ -709,7 +729,10 @@ export default function TabDashboard({
                               className={`w-full h-full px-2 py-0 bg-transparent outline-none transition-all placeholder-opacity-20 focus:backdrop-blur-md focus:bg-white/5 dark:focus:bg-white/5 focus:ring-1 focus:ring-inset focus:ring-blue-500 ${isMultipleSelected ? 'pointer-events-none selection:bg-transparent cursor-default text-inherit' : ''} text-[11px] font-mono`}
                               style={{ color: TC.text, border: 'none' }}
                               value={r[c] || ''}
-                              onChange={e => onUpdateCell(ri, c, e.target.value)}
+                              onChange={e => {
+                                const originalIdx = rows.indexOf(r)
+                                if (originalIdx >= 0) onUpdateCell(originalIdx, c, e.target.value)
+                              }}
                               onFocus={() => {
                                 if (!isDragging && !isMultipleSelected) {
                                   setSelection({ start: {r: ri, c: ci}, end: {r: ri, c: ci} })
@@ -746,7 +769,7 @@ export default function TabDashboard({
                     <div className="w-24 px-1 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity sticky right-0 bg-inherit z-10 border-l" style={{ borderColor: TC.borderSoft }}>
                       <button onClick={() => handleCycleGestion(ri)} className="p-1 hover:bg-blue-500/20 text-blue-400 rounded-md transition-colors" title="Cambiar Gestión"><ArrowDownAZ size={10} /></button>
                       <button onClick={() => handleDuplicateRow(ri)} className="p-1 hover:bg-green-500/20 text-green-400 rounded-md transition-colors" title="Duplicar Fila"><Plus size={10} /></button>
-                      <button onClick={() => onDeleteRow(ri)} className="p-1 hover:bg-red-500/20 text-red-400 rounded-md transition-colors" title="Eliminar fila"><Trash2 size={10} /></button>
+                      <button onClick={() => { const oi = rows.indexOf(r); if (oi >= 0) onDeleteRow(oi) }} className="p-1 hover:bg-red-500/20 text-red-400 rounded-md transition-colors" title="Eliminar fila"><Trash2 size={10} /></button>
                     </div>
                   </div>
                 )

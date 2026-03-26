@@ -13,6 +13,8 @@ import { useRiskAnalysis } from '../hooks/useRiskAnalysis'
 import { useConflictAnalysis } from '../hooks/useConflictAnalysis'
 import { useComunas } from '../hooks/useComunas'
 import type { RouteRow, RiskResult, ComunaConflict } from '../types/auditoria'
+import TabIncidencias from '../components/reporte-rutas/TabIncidencias'
+
 
 const REPORT_TABS = [
   { id: 'carga',   label: 'Cargar Datos', icon: '📁', badgeVariant: 'blue'   },
@@ -20,6 +22,7 @@ const REPORT_TABS = [
   { id: 'grafico', label: 'Gráfico Interactivo', icon: '📊', badgeVariant: 'purple' },
   { id: 'resumen', label: 'Avance en Ruta', icon: '📝', badgeVariant: 'yellow' },
   { id: 'isos',    label: 'ISOs por camion', icon: '🚚', badgeVariant: 'orange' },
+  { id: 'incidencias', label: 'Incidencias', icon: '🚨', badgeVariant: 'red' },
 ]
 
 /* ── CSV ── */
@@ -48,6 +51,7 @@ type PRData = {
   hasConflicts: boolean
   auditConflicts: ComunaConflict[]
   auditRisk: Record<string, RiskResult>
+  incidenciasByPatente: Record<string, any>
 }
 
 export default function ReporteRutas() {
@@ -56,7 +60,7 @@ export default function ReporteRutas() {
   const [fileName, setFileName] = useState('')
   const [rawRows, setRawRows] = useState<any[]>([])
   const [data, setData] = useState<PRData|null>(null)
-  const [activeTab, setActiveTab] = useState<'carga' | 'reporte' | 'grafico' | 'resumen' | 'isos'>('carga')
+  const [activeTab, setActiveTab] = useState<'carga' | 'reporte' | 'grafico' | 'resumen' | 'isos' | 'incidencias'>('carga')
   const [toast, setToast] = useState('')
   const [viewMode, setViewMode] = useState<'numbers'|'pct'>('numbers')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -174,6 +178,42 @@ export default function ReporteRutas() {
         pats[patente].gestiones[gestion]++
       })
 
+      const incidenciasByPatente: Record<string, any> = {}
+      rows.forEach(row => {
+        const patente = (getKey(row,'Patente')||'').trim()
+        const region = (getKey(row,'Region')||'Sin Región').trim()
+        const estado = (getKey(row,'Estado')||'Sin Estado').trim()
+        const tipo = (getKey(row, 'Tipo') || '').trim().toLowerCase()
+        const imgUrl = (getKey(row, 'imageUrl') || getKey(row, 'foto') || getKey(row, 'URL_FOTO') || '').trim()
+        const motivoInc = (getKey(row, 'Motivo') || getKey(row, 'MotivoNoEntrega') || getKey(row, 'Motivo No Entrega') || '').trim()
+        const obsInc = (getKey(row, 'Comentario') || getKey(row, 'ComentarioNoEntrega') || getKey(row, 'Comentario No Entrega') || '').trim()
+        const iso = (getKey(row, 'ISO') || getKey(row, 'TITULO') || getKey(row, 'ParentOrder') || '').trim()
+        const fecha = (getKey(row, 'Fecha') || getKey(row, 'FechaEntrega') || '').trim()
+        const comuna = (getKey(row, 'Comuna') || getKey(row, 'CITY') || '').trim()
+
+        const isIncidence = tipo.includes('incidencia') || estado.toLowerCase().includes('incidencia') || imgUrl.length > 0 || motivoInc.length > 0
+        
+        if (isIncidence && patente) {
+          if (!incidenciasByPatente[patente]) {
+            incidenciasByPatente[patente] = { patente, region, totalFotos: 0, eventos: [] }
+          }
+          
+          const fotos = imgUrl.split(',').map((s: string) => s.trim().replace(/^[\[\]"']+|[\[\]"']+$/g, '').trim()).filter((s: string) => s.startsWith('http'))
+          
+          incidenciasByPatente[patente].eventos.push({
+            id: iso + '_' + Math.random().toString(36).substr(2, 4),
+            iso,
+            fecha: fecha || 'Sin fecha',
+            motivo: motivoInc || (imgUrl ? 'Registro Fotográfico' : 'Incidencia'),
+            comentario: obsInc,
+            fotos,
+            region,
+            comuna
+          })
+          incidenciasByPatente[patente].totalFotos += fotos.length
+        }
+      })
+
       const conflictedByPatente: Record<string, { po: string, states: string[], rows: any[] }[]> = {}
       let hasConflicts = false
 
@@ -235,7 +275,8 @@ export default function ReporteRutas() {
         conflictedByPatente,
         hasConflicts,
         auditConflicts,
-        auditRisk
+        auditRisk,
+        incidenciasByPatente
       })
       setSelectedRegions(new Set(Object.keys(processed)))
       setActiveTab('reporte')
@@ -1188,11 +1229,36 @@ export default function ReporteRutas() {
                         </div>
                       </div>
                     </Card>
-                  </>
-                )}
-              </div>
+                    </>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+          {activeTab === 'incidencias' && (
+            <motion.div 
+              key="incidencias"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0"
+            >
+              {data ? (
+                <TabIncidencias 
+                  incidencias={data.incidenciasByPatente} 
+                  selectedRegions={selectedRegions} 
+                  isDark={isDark} 
+                  TC={TC} 
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full opacity-30">
+                  <span className="text-6xl mb-4">🚨</span>
+                  <p className="font-bold">Carga un reporte para ver incidencias</p>
+                </div>
+              )}
             </motion.div>
           )}
+
           {activeTab === 'isos' && (
             <motion.div 
                 key="isos" 

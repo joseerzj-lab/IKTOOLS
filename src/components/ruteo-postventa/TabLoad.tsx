@@ -14,6 +14,7 @@ interface Props {
   onProjectsUpload: (file: File) => void
   onDestinoCross: (planFile: File, convFile: File) => void
   onOriginCross: (file: File) => void
+  onExportJSON: () => void
   pvPlanName: string
   projectsName: string
   TC: any
@@ -27,6 +28,7 @@ export default function TabLoad({
   onProjectsUpload,
   onDestinoCross,
   onOriginCross,
+  onExportJSON,
   pvPlanName,
   projectsName,
   TC
@@ -204,7 +206,7 @@ export default function TabLoad({
   const [activeModal, setActiveModal] = useState<string | null>(null)
 
   const modules = [
-    { id: 'session', icon: '💾', title: 'Sesión de Trabajo', desc: 'Restaura tu progreso desde un archivo local (.json)' },
+    { id: 'session', icon: '💾', title: 'Sesión de Trabajo', desc: 'Guarda o restaura tu progreso desde un archivo local (.json)' },
     { id: 'projects', icon: '🏗️', title: 'Proyectos', desc: 'Carga el documento para cruzar proyectos Leslie' },
     { id: 'duplicates', icon: '👯', title: 'Duplicados', desc: 'Detecta ISOs duplicadas subiendo el Plan Actual' },
     { id: 'quick', icon: '⚡', title: 'Carga Rápida', desc: 'Pegar repites, retiros o K8 directo desde Excel' },
@@ -224,6 +226,15 @@ export default function TabLoad({
               <span className="text-xs mt-2 text-center max-w-[200px] opacity-70">Restaura tu progreso desde un archivo local</span>
               <input type="file" accept=".json" className="hidden" onChange={e => { handleLoadJSON(e); setActiveModal(null) }} />
             </label>
+
+            <div className="h-px w-full my-2" style={{ background: TC.borderSoft }}></div>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] font-bold opacity-50 uppercase tracking-widest">O guardar actual</span>
+              <Btn variant="primary" onClick={() => { onExportJSON(); setActiveModal(null) }} style={{ width: '100%', justifyContent: 'center', height: 48, borderRadius: 12 }}>
+                <span className="text-xl mr-2">💾</span> Guardar Sesión Actual (.json)
+              </Btn>
+            </div>
           </div>
         )
       case 'projects':

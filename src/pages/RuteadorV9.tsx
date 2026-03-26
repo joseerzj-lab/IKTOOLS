@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
 import { PageShell } from '../ui/DS'
@@ -65,10 +65,46 @@ export default function RuteadorV9() {
   })
   const [toast, setToast] = useState('')
 
+  // ── Undo history ──
+  const MAX_HISTORY = 30
+  const rowsHistoryRef = useRef<Row[][]>([])
+  const setRowsWithHistory = useCallback((updater: Row[] | ((prev: Row[]) => Row[])) => {
+    setRows(prev => {
+      // Push current state to history before changing
+      rowsHistoryRef.current = [...rowsHistoryRef.current.slice(-(MAX_HISTORY - 1)), prev]
+      return typeof updater === 'function' ? updater(prev) : updater
+    })
+  }, [])
+
+  const undo = useCallback(() => {
+    if (rowsHistoryRef.current.length === 0) return false
+    const prev = rowsHistoryRef.current.pop()!
+    setRows(prev) // Direct setRows — don't push to history
+    return true
+  }, [])
+
   // ── Filter state (lifted from TabDashboard so it persists across tabs) ──
   const [search, setSearch] = useState('')
-  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>({})
-  const [sortCol, setSortCol] = useState<{ col: string; dir: 'asc' | 'desc' } | null>(null)
+  const [colFilters, setColFilters] = useState<Record<string, Set<string>>>(() => {
+    try {
+      const saved = localStorage.getItem('r9-colFilters')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        const result: Record<string, Set<string>> = {}
+        for (const [k, v] of Object.entries(parsed)) {
+          result[k] = new Set(v as string[])
+        }
+        return result
+      }
+      return {}
+    } catch { return {} }
+  })
+  const [sortCol, setSortCol] = useState<{ col: string; dir: 'asc' | 'desc' } | null>(() => {
+    try {
+      const saved = localStorage.getItem('r9-sortCol')
+      return saved ? JSON.parse(saved) : null
+    } catch { return null }
+  })
 
   const filteredRows = useMemo(() => {
     let result = rows
@@ -100,29 +136,33 @@ export default function RuteadorV9() {
   const [projectsName, setProjectsName] = useState('')
   const [showShortcuts, setShowShortcuts] = useState(false)
 
-  // ── Persistence ──
+  // ── Persistence (debounced for rows) ──
   useEffect(() => { localStorage.setItem('r9-cols', JSON.stringify(columns)) }, [columns])
-  useEffect(() => { 
-    if (rows.length > 0) {
-      localStorage.setItem('r9-rows-v2', compress(JSON.stringify(rows))) 
-      localStorage.removeItem('r9-rows') // Clean up old uncompressed key
-    } else {
-      localStorage.removeItem('r9-rows-v2')
-    }
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      if (rows.length > 0) {
+        localStorage.setItem('r9-rows-v2', compress(JSON.stringify(rows)))
+        localStorage.removeItem('r9-rows') // Clean up old uncompressed key
+      } else {
+        localStorage.removeItem('r9-rows-v2')
+      }
+    }, 500)
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
   }, [rows])
   useEffect(() => { localStorage.setItem('r9-vis', JSON.stringify([...visibleCols])) }, [visibleCols])
-
   useEffect(() => {
-    const handleDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/')) {
-        e.preventDefault()
-        setShowShortcuts(p => !p)
-      }
-      if (e.key === 'Escape') setShowShortcuts(false)
+    // Serialize colFilters (Set → Array for JSON)
+    const serializable: Record<string, string[]> = {}
+    for (const [k, v] of Object.entries(colFilters)) {
+      serializable[k] = [...v]
     }
-    window.addEventListener('keydown', handleDown)
-    return () => window.removeEventListener('keydown', handleDown)
-  }, [])
+    localStorage.setItem('r9-colFilters', JSON.stringify(serializable))
+  }, [colFilters])
+  useEffect(() => {
+    localStorage.setItem('r9-sortCol', JSON.stringify(sortCol))
+  }, [sortCol])
 
   // ── Helpers ──
   const flash = useCallback((msg: string) => {
@@ -130,10 +170,31 @@ export default function RuteadorV9() {
     setTimeout(() => setToast(''), 2500)
   }, [])
 
+  useEffect(() => {
+    const handleDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === '?' || e.key === '/')) {
+        e.preventDefault()
+        setShowShortcuts(p => !p)
+      }
+      // Alt+Z → Undo
+      if (e.altKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (undo()) {
+          flash('↩ Deshacer')
+        } else {
+          flash('ℹ️ Sin más cambios para deshacer')
+        }
+      }
+      if (e.key === 'Escape') setShowShortcuts(false)
+    }
+    window.addEventListener('keydown', handleDown)
+    return () => window.removeEventListener('keydown', handleDown)
+  }, [undo, flash])
+
   const onMergeRows = (newCols: string[], newRows: Row[], source: string) => {
     const mergedCols = [...new Set([...columns, ...newCols])]
     setColumns(reorderCols(mergedCols))
-    setRows(prev => [...prev, ...newRows])
+    setRowsWithHistory(prev => [...prev, ...newRows])
     
     // Ensure new columns are visible
     setVisibleCols(prev => {
@@ -145,15 +206,15 @@ export default function RuteadorV9() {
     flash(`✓ ${newRows.length} filas agregadas desde ${source}`)
   }
 
-  const onLoadJSON = (cols: string[], rows: Row[]) => {
+  const onLoadJSON = (cols: string[], loadedRows: Row[]) => {
     setColumns(reorderCols(cols))
-    setRows(rows)
+    setRowsWithHistory(loadedRows)
     setVisibleCols(new Set(reorderCols(cols)))
     flash('✓ Sesión cargada correctamente')
   }
 
   const updateCell = (ri: number, col: string, val: string) => {
-    setRows(prev => {
+    setRowsWithHistory(prev => {
       const next = [...prev]
       next[ri] = { ...next[ri], [col]: val }
       return next
@@ -163,11 +224,11 @@ export default function RuteadorV9() {
   const addRow = () => {
     const newRow: Row = {}
     columns.forEach(c => newRow[c] = '')
-    setRows(prev => [...prev, newRow])
+    setRowsWithHistory(prev => [...prev, newRow])
   }
 
   const deleteRow = (idx: number) => {
-    setRows(prev => prev.filter((_, i) => i !== idx))
+    setRowsWithHistory(prev => prev.filter((_, i) => i !== idx))
   }
 
   const crearNueva = () => {
@@ -178,7 +239,7 @@ export default function RuteadorV9() {
     // Add one empty row so the table structure is visible
     const newRow: Row = {}
     defaultCols.forEach(c => newRow[c] = '')
-    setRows([newRow])
+    setRowsWithHistory([newRow])
     
     flash('✓ Nueva tabla creada')
   }
@@ -186,7 +247,7 @@ export default function RuteadorV9() {
   const clearDashboard = () => {
     if (rows.length === 0) return
     if (window.confirm('¿Estás seguro de que deseas borrar todos los datos del dashboard?')) {
-      setRows([])
+      setRowsWithHistory([])
       flash('✓ Dashboard limpiado')
     }
   }
@@ -315,7 +376,7 @@ export default function RuteadorV9() {
         })
 
         let upd = 0
-        setRows(prev => prev.map(r => {
+        setRowsWithHistory(prev => prev.map(r => {
           if (r.ORIGEN === 'PENDIENTE' && r.ISO && map.has(r.ISO)) {
             upd++
             return { ...r, ORIGEN: map.get(r.ISO)! }
@@ -374,7 +435,7 @@ export default function RuteadorV9() {
 
       let upd = 0
       let nf = 0
-      setRows(prev => {
+      setRowsWithHistory(prev => {
         const newRows = [...prev]
         newRows.forEach(m => {
           const k = String(m.ISO || '').trim().toUpperCase()
@@ -449,6 +510,7 @@ export default function RuteadorV9() {
                 pvPlanName={pvPlanName}
                 projectsName={projectsName}
                 TC={TC}
+                onExportJSON={exportJSON}
               />
             </motion.div>
           )}
@@ -465,7 +527,7 @@ export default function RuteadorV9() {
                 onAddRow={addRow} 
                 onDeleteRow={deleteRow} 
                 onCrearNueva={crearNueva} 
-                onUpdateRows={setRows}
+                onUpdateRows={setRowsWithHistory}
                 onNotify={flash}
                 onClearAll={clearDashboard}
                 search={search}
@@ -474,6 +536,7 @@ export default function RuteadorV9() {
                 setColFilters={setColFilters}
                 sortCol={sortCol}
                 setSortCol={setSortCol}
+                onExportJSON={exportJSON}
               />
             </motion.div>
           )}
@@ -538,6 +601,7 @@ export default function RuteadorV9() {
               
               <div className="grid grid-cols-1 gap-4">
                 {[
+                  { k: 'Alt + Z', d: 'Deshacer último cambio' },
                   { k: 'Ctrl + ?', d: 'Abrir/Cerrar esta guía' },
                   { k: 'Ctrl + C', d: 'Copiar selección de tabla (Tabular)' },
                   { k: 'Ctrl + V', d: 'Pegar datos en tabla (Distribuye automáticamente)' },
