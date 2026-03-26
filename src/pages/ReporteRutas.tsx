@@ -138,9 +138,11 @@ export default function ReporteRutas() {
 
         if(commerce.toLowerCase()!=='ikea'||!patente) return
         
+        const empresa = (getKey(row, 'Empresa') || getKey(row, 'Transportista') || 'Sin Empresa').trim()
+        
         estadosSet.add(estado)
         if (!rawRowsByPO[parentOrder]) rawRowsByPO[parentOrder] = []
-        rawRowsByPO[parentOrder].push(row)
+        rawRowsByPO[parentOrder].push({ ...row, _empresa: empresa }) // Keep company info with the row
 
         if(!processed[region]) {
           processed[region]={
@@ -179,38 +181,52 @@ export default function ReporteRutas() {
       })
 
       const incidenciasByPatente: Record<string, any> = {}
-      rows.forEach(row => {
-        const patente = (getKey(row,'Patente')||'').trim()
-        const region = (getKey(row,'Region')||'Sin Región').trim()
-        const estado = (getKey(row,'Estado')||'Sin Estado').trim()
-        const tipo = (getKey(row, 'Tipo') || '').trim().toLowerCase()
-        const imgUrl = (getKey(row, 'imageUrl') || getKey(row, 'foto') || getKey(row, 'URL_FOTO') || '').trim()
-        const motivoInc = (getKey(row, 'Motivo') || getKey(row, 'MotivoNoEntrega') || getKey(row, 'Motivo No Entrega') || '').trim()
-        const obsInc = (getKey(row, 'Comentario') || getKey(row, 'ComentarioNoEntrega') || getKey(row, 'Comentario No Entrega') || '').trim()
-        const iso = (getKey(row, 'ISO') || getKey(row, 'TITULO') || getKey(row, 'ParentOrder') || '').trim()
-        const fecha = (getKey(row, 'Fecha') || getKey(row, 'FechaEntrega') || '').trim()
-        const comuna = (getKey(row, 'Comuna') || getKey(row, 'CITY') || '').trim()
-
-        const isIncidence = tipo.includes('incidencia') || estado.toLowerCase().includes('incidencia') || imgUrl.length > 0 || motivoInc.length > 0
+      
+      // Process Incidents by ParentOrder (Unique count logic)
+      Object.entries(rawRowsByPO).forEach(([, poRows]) => {
+        if (poRows.length === 0) return
         
-        if (isIncidence && patente) {
+        const firstRow = poRows[0]
+        const patente = (getKey(firstRow, 'Patente') || '').trim()
+        const region = (getKey(firstRow, 'Region') || 'Sin Región').trim()
+        const empresa = firstRow._empresa || 'Sin Empresa'
+        
+        // A ParentOrder is an incident if ALL its rows are "Pendiente"
+        const allPendiente = poRows.every(r => (getKey(r, 'Estado') || '').trim().toLowerCase().includes('pendiente'))
+        
+        if (allPendiente && patente) {
           if (!incidenciasByPatente[patente]) {
-            incidenciasByPatente[patente] = { patente, region, totalFotos: 0, eventos: [] }
+            incidenciasByPatente[patente] = { patente, region, empresa, totalFotos: 0, eventos: [], incidentCount: 0 }
           }
           
-          const fotos = imgUrl.split(',').map((s: string) => s.trim().replace(/^[\[\]"']+|[\[\]"']+$/g, '').trim()).filter((s: string) => s.startsWith('http'))
+          incidenciasByPatente[patente].incidentCount++
           
-          incidenciasByPatente[patente].eventos.push({
-            id: iso + '_' + Math.random().toString(36).substr(2, 4),
-            iso,
-            fecha: fecha || 'Sin fecha',
-            motivo: motivoInc || (imgUrl ? 'Registro Fotográfico' : 'Incidencia'),
-            comentario: obsInc,
-            fotos,
-            region,
-            comuna
+          poRows.forEach(row => {
+            const estado = (getKey(row,'Estado')||'Sin Estado').trim()
+            const imgUrl = (getKey(row, 'imageUrl') || getKey(row, 'foto') || getKey(row, 'URL_FOTO') || '').trim()
+            const motivoInc = (getKey(row, 'Motivo') || getKey(row, 'MotivoNoEntrega') || getKey(row, 'Motivo No Entrega') || '').trim()
+            const obsInc = (getKey(row, 'Comentario') || getKey(row, 'ComentarioNoEntrega') || getKey(row, 'Comentario No Entrega') || '').trim()
+            const iso = (getKey(row, 'ISO') || getKey(row, 'TITULO') || getKey(row, 'ParentOrder') || '').trim()
+            
+            // Requerimientos específicos: Fechaentregareal y Localidad
+            const fecha = (getKey(row, 'Fechaentregareal') || getKey(row, 'Fecha') || getKey(row, 'FechaEntrega') || '').trim()
+            const comuna = (getKey(row, 'Localidad') || getKey(row, 'Comuna') || getKey(row, 'CITY') || '').trim()
+
+            const fotos = imgUrl.split(',').map((s: string) => s.trim().replace(/^[\[\]"']+|[\[\]"']+$/g, '').trim()).filter((s: string) => s.startsWith('http'))
+            
+            incidenciasByPatente[patente].eventos.push({
+              id: iso + '_' + Math.random().toString(36).substr(2, 4),
+              iso,
+              fecha: fecha || 'Sin fecha',
+              motivo: motivoInc || (imgUrl ? 'Registro Fotográfico' : 'Incidencia'),
+              comentario: obsInc,
+              fotos,
+              region,
+              comuna,
+              estado
+            })
+            incidenciasByPatente[patente].totalFotos += fotos.length
           })
-          incidenciasByPatente[patente].totalFotos += fotos.length
         }
       })
 

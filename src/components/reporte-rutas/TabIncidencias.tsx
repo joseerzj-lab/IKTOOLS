@@ -13,12 +13,15 @@ interface IncidentEvent {
   fotos: string[]
   region: string
   comuna: string
+  estado: string
 }
 
 interface IncidentVehicle {
   patente: string
   region: string
+  empresa: string
   totalFotos: number
+  incidentCount: number
   eventos: IncidentEvent[]
 }
 
@@ -39,7 +42,7 @@ export default function TabIncidencias({ incidencias, selectedRegions, isDark, T
     return Object.values(incidencias)
       .filter(v => selectedRegions.has(v.region))
       .filter(v => v.patente.toLowerCase().includes(localSearch.toLowerCase()))
-      .sort((a, b) => b.totalFotos - a.totalFotos)
+      .sort((a, b) => b.incidentCount - a.incidentCount || b.totalFotos - a.totalFotos)
   }, [incidencias, selectedRegions, localSearch])
 
   const activeVehicle = useMemo(() => {
@@ -91,29 +94,40 @@ export default function TabIncidencias({ incidencias, selectedRegions, isDark, T
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 onClick={() => setSelectedPatente(v.patente)}
-                className={`p-4 cursor-pointer border-b transition-all relative group ${selectedPatente === v.patente ? 'bg-blue-500/10' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
+                className={`px-4 py-3 cursor-pointer border-b transition-all relative group ${selectedPatente === v.patente ? 'bg-blue-500/10' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
                 style={{ borderColor: TC.borderSoft }}
               >
                 {selectedPatente === v.patente && (
                   <motion.div layoutId="active-indicator" className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />
                 )}
                 
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-sm font-black mono tracking-tighter" style={{ color: TC.text }}>{v.patente}</span>
-                  <Badge variant={v.totalFotos > 5 ? 'high' : 'medium'} style={{ fontSize: 9 }}>
-                    {v.totalFotos} {v.totalFotos === 1 ? 'foto' : 'fotos'}
-                  </Badge>
+                <div className="flex justify-between items-center">
+                  <div className="flex flex-col overflow-hidden">
+                    <span className="text-sm font-black mono tracking-tighter truncate" style={{ color: TC.text }}>{v.patente}</span>
+                    <span className="text-[9px] font-bold opacity-40 -mt-0.5 uppercase truncate max-w-[140px]" style={{ color: TC.textSub }}>{v.empresa}</span>
+                  </div>
+                  <div className="flex flex-col items-end shrink-0 ml-2">
+                    <div style={{ fontSize: 8, padding: '1px 5px', background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 4, fontWeight: 700 }}>
+                      {v.incidentCount} {v.incidentCount === 1 ? 'INCIDENCIA' : 'INCIDENCIAS'}
+                    </div>
+                  </div>
                 </div>
                 
-                <div className="flex items-center gap-2 opacity-60">
-                  <MapPin size={10} style={{ color: TC.text }} />
-                  <span className="text-[10px] font-medium truncate" style={{ color: TC.text }}>{v.region}</span>
+                <div className="mt-2 flex items-center justify-between opacity-60">
+                  <div className="flex items-center gap-1">
+                    <MapPin size={10} style={{ color: TC.textSub }} />
+                    <span className="text-[9px] font-medium truncate max-w-[100px]" style={{ color: TC.textSub }}>{v.region}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Camera size={10} style={{ color: TC.textSub }} />
+                    <span className="text-[9px] font-bold" style={{ color: TC.textSub }}>{v.totalFotos}</span>
+                  </div>
                 </div>
 
-                <div className="mt-2 flex gap-1 overflow-hidden h-10">
-                   {v.eventos.flatMap(e => e.fotos).slice(0, 4).map((f, i) => (
-                     <div key={i} className="w-1/4 h-full rounded bg-gray-200 dark:bg-gray-800 overflow-hidden flex-shrink-0 border border-black/5 dark:border-white/5">
-                        <img src={f} alt="" className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                <div className="mt-2 flex gap-1 h-8">
+                   {v.eventos.flatMap(e => e.fotos).slice(0, 6).map((f, i) => (
+                     <div key={i} className="flex-1 h-full rounded bg-gray-200 dark:bg-gray-800 overflow-hidden border border-black/5 dark:border-white/5">
+                        <img src={f} alt="" className="w-full h-full object-cover opacity-60" />
                      </div>
                    ))}
                 </div>
@@ -149,21 +163,44 @@ export default function TabIncidencias({ incidencias, selectedRegions, isDark, T
               className="flex-1 overflow-y-auto p-8"
             >
               {/* Header Detalle */}
-              <div className="mb-8 flex justify-between items-end">
+              <div className="mb-8 flex justify-between items-start">
                 <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h2 className="text-4xl font-black mono tracking-tighter" style={{ color: TC.text }}>{activeVehicle.patente}</h2>
-                    <Badge variant="blue" style={{ padding: '4px 12px' }}>{activeVehicle.totalFotos} FOTOS TOTALES</Badge>
+                  <div className="flex flex-col mb-4">
+                    <span className="text-[10px] font-bold opacity-40 tracking-widest uppercase mb-1" style={{ color: TC.text }}>Patente del Vehículo</span>
+                    <h2 className="text-5xl font-black mono tracking-tighter" style={{ color: TC.text }}>{activeVehicle.patente}</h2>
+                    <span className="text-sm font-bold opacity-60 mt-1" style={{ color: TC.text }}>{activeVehicle.empresa}</span>
                   </div>
-                  <div className="flex items-center gap-4 text-sm font-medium opacity-60">
-                    <div className="flex items-center gap-1"><MapPin size={14} /> {activeVehicle.region}</div>
-                    <div className="flex items-center gap-1"><AlertCircle size={14} /> {activeVehicle.eventos.length} Incidencias</div>
+                  <div className="flex items-center gap-4 text-xs font-bold opacity-60">
+                    <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-blue-500/10 text-blue-500"><MapPin size={14} /> {activeVehicle.region}</div>
+                    <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-red-500/10 text-red-500"><AlertCircle size={14} /> {activeVehicle.incidentCount} INCIDENCIAS</div>
+                    <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-gray-500/10 text-gray-500"><Camera size={14} /> {activeVehicle.totalFotos} FOTOS</div>
                   </div>
                 </div>
                 
-                <Btn onClick={() => setLocalSearch('')} variant="secondary" style={{ fontSize: 10 }}>
-                  <X size={14} className="mr-2" /> Cerrar Detalle
-                </Btn>
+                <div className="flex gap-2">
+                  <Btn 
+                    onClick={() => {
+                        const csvHeaders = "Patente,Empresa,Cant. Incidencias,ISOs\n"
+                        const rows = Object.values(incidencias).map(v => {
+                            const isos = v.eventos.map(e => e.iso).join('; ')
+                            return `${v.patente},${v.empresa},${v.incidentCount},"${isos}"`
+                        }).join('\n')
+                        const blob = new Blob(["\uFEFF" + csvHeaders + rows], { type: 'text/csv;charset=utf-8;' })
+                        const url = URL.createObjectURL(blob)
+                        const link = document.createElement("a")
+                        link.href = url
+                        link.download = `Reporte_Incidencias.csv`
+                        link.click()
+                    }} 
+                    variant="primary" 
+                    style={{ boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}
+                  >
+                    📊 Generar Reporte
+                  </Btn>
+                  <Btn onClick={() => setSelectedPatente('')} variant="ghost" style={{ padding: 0, width: 40, height: 40, borderRadius: '50%' }}>
+                    <X size={20} />
+                  </Btn>
+                </div>
               </div>
 
               {/* Timeline de Eventos */}
@@ -173,18 +210,30 @@ export default function TabIncidencias({ incidencias, selectedRegions, isDark, T
                     {/* Dot Indication */}
                     <div className="absolute left-4 top-2 w-4 h-4 rounded-full bg-blue-500 border-4 border-white dark:border-slate-900 shadow-sm z-10" />
                     
-                    <div className="mb-4">
-                      <div className="flex items-center gap-3 mb-1">
-                        <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-black mono">#{ev.id.slice(0, 8)}</span>
-                        <span className="text-xs font-bold opacity-40 uppercase tracking-widest">{ev.fecha}</span>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-500 text-[10px] font-black mono">#{ev.id.slice(0, 8)}</span>
+                          <span className="text-xs font-bold opacity-40 uppercase tracking-widest">{ev.fecha}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                           <Badge variant="muted" style={{ fontSize: 13, background: TC.bg, border: `1px solid ${TC.border}`, color: TC.text }}>
+                             <span className="mono mr-1 opacity-50">ISO:</span> {ev.iso}
+                           </Badge>
+                           <button 
+                             onClick={() => { navigator.clipboard.writeText(ev.iso); alert('Copiado!') }}
+                             className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500 hover:text-white transition-colors"
+                             title="Copiar ISO"
+                           >
+                             <Search size={14} className="rotate-90" />
+                           </button>
+                        </div>
                       </div>
                       <h4 className="text-lg font-bold" style={{ color: TC.text }}>{ev.motivo || 'Motivo no especificado'}</h4>
                       <p className="text-sm opacity-70 mt-1 max-w-2xl" style={{ color: TC.textSub }}>{ev.comentario || 'Sin observaciones adicionales registradas.'}</p>
-                      <div className="mt-2 flex items-center gap-2 text-[10px] font-bold opacity-60">
-                        <Badge variant="muted" style={{ fontSize: 9 }}>ISO: {ev.iso}</Badge>
+                      <div className="mt-3 flex items-center gap-2 text-[10px] font-bold opacity-60">
                         <Badge variant="muted" style={{ fontSize: 9 }}>Comuna: {ev.comuna}</Badge>
+                        <Badge variant="muted" style={{ fontSize: 9 }}>Estado: {ev.estado}</Badge>
                       </div>
-                    </div>
 
                     {/* Galería del Evento */}
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
