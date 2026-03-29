@@ -246,6 +246,7 @@ export default function GenerarResumen() {
         })
       }
 
+      summaries.sort((a, b) => String(a.Vehículo).localeCompare(String(b.Vehículo)))
       setResumenData(summaries)
       addLog(`Resumen generado para ${summaries.length} vehículos.`, 'ok')
       setTab('resumen')
