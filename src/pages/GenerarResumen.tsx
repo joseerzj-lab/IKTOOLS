@@ -287,14 +287,33 @@ export default function GenerarResumen() {
     try {
       const el = tableRef.current
       const dataUrl = await toPng(el, { backgroundColor: '#ffffff', pixelRatio: 2 })
-      const pdf = new jsPDF('p', 'pt', 'a4')
-      const imgProps = pdf.getImageProperties(dataUrl)
-      const pdfWidth = pdf.internal.pageSize.getWidth()
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width
+      // Orientation 'l' (landscape), units 'pt', format 'letter'
+      const pdf = new jsPDF('l', 'pt', 'letter')
+      const margin = 72 // 1 inch in points (APA 6 margin)
       
-      pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = pdf.internal.pageSize.getHeight()
+      const contentWidth = pdfWidth - margin * 2
+      const contentHeight = pdfHeight - margin * 2
+
+      const imgProps = pdf.getImageProperties(dataUrl)
+      const imgRatio = imgProps.width / imgProps.height
+      
+      let renderWidth = contentWidth
+      let renderHeight = contentWidth / imgRatio
+
+      // Scale to fit height if necessary
+      if (renderHeight > contentHeight) {
+        renderHeight = contentHeight
+        renderWidth = renderHeight * imgRatio
+      }
+
+      const x = margin + (contentWidth - renderWidth) / 2
+      const y = margin + (contentHeight - renderHeight) / 2
+      
+      pdf.addImage(dataUrl, 'PNG', x, y, renderWidth, renderHeight)
       pdf.save(`Resumen_Vehiculos.pdf`)
-      addLog('Exportado a PDF exitosamente.', 'ok')
+      addLog('Exportado a PDF exitosamente (Formato Carta Horizontal - Margen APA).', 'ok')
     } catch (e) {
       addLog('Error al exportar a PDF.', 'err')
     }
@@ -319,25 +338,47 @@ export default function GenerarResumen() {
         <AnimatePresence mode="wait">
           {tab === 'archivos' && (
             <motion.div key="archivos" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full max-w-4xl space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl pt-4">
                 
-                <div style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div className="text-[12px] font-bold text-blue-400">📄 Archivo SimpliRoute (Input)</div>
-                  <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-8 transition-all hover:bg-white/5 cursor-pointer" style={{ borderColor: TC.borderSoft }}>
-                    <div className="text-3xl mb-4">📁</div>
-                    <span className="text-xs font-medium text-center truncate w-full">{fileSimpli?.name || 'Cargar SimpliRoute (.xlsx)'}</span>
+                {/* Carta SimpliRoute */}
+                <motion.div 
+                  whileHover={{ y: -4 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                  className="relative group overflow-hidden" 
+                  style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01))', backdropFilter: 'blur(16px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 24, padding: 32, display: 'flex', flexDirection: 'column', gap: 20, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}
+                >
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-indigo-500 opacity-70"></div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-500/20 rounded-lg text-blue-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg></div>
+                    <div className="text-[13px] font-bold tracking-wider text-blue-300 uppercase">Input SimpliRoute</div>
+                  </div>
+                  <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-10 transition-all cursor-pointer group-hover:border-blue-400/50 group-hover:bg-blue-400/5 relative" style={{ borderColor: TC.borderSoft }}>
+                    <div className="text-4xl mb-4 transform transition-transform group-hover:scale-110">📁</div>
+                    <span className="text-sm font-medium text-center truncate w-full px-4 text-gray-200">{fileSimpli?.name || 'Arrastra tu archivo .xlsx o haz clic'}</span>
                     <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {setFileSimpli(e.target.files?.[0] || null); e.target.value=''}}/>
                   </label>
-                </div>
+                  {fileSimpli && <div className="absolute bottom-4 right-4 text-[10px] bg-green-500/20 text-green-400 px-2 py-1 rounded-full uppercase font-bold">Cargado</div>}
+                </motion.div>
 
-                <div style={{ background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(10px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 16, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                  <div className="text-[12px] font-bold text-blue-400">📄 Archivo Conversión</div>
-                  <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-8 transition-all hover:bg-white/5 cursor-pointer" style={{ borderColor: TC.borderSoft }}>
-                    <div className="text-3xl mb-4">🔁</div>
-                    <span className="text-xs font-medium text-center truncate w-full">{fileConv?.name || 'Cargar Conversión (.xlsx)'}</span>
+                {/* Carta Conversión */}
+                <motion.div 
+                  whileHover={{ y: -4 }}
+                  transition={{ type: "spring", stiffness: 300 }}
+                  className="relative group overflow-hidden" 
+                  style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01))', backdropFilter: 'blur(16px)', border: `1px solid ${TC.borderSoft}`, borderRadius: 24, padding: 32, display: 'flex', flexDirection: 'column', gap: 20, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}
+                >
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-400 to-pink-500 opacity-70"></div>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-500/20 rounded-lg text-purple-400"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 2.1l4 4-4 4"></path><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8M7 21.9l-4-4 4-4"></path><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"></path></svg></div>
+                    <div className="text-[13px] font-bold tracking-wider text-purple-300 uppercase">Matriz Conversión</div>
+                  </div>
+                  <label className="flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-10 transition-all cursor-pointer group-hover:border-purple-400/50 group-hover:bg-purple-400/5 relative" style={{ borderColor: TC.borderSoft }}>
+                    <div className="text-4xl mb-4 transform transition-transform group-hover:scale-110">🔁</div>
+                    <span className="text-sm font-medium text-center truncate w-full px-4 text-gray-200">{fileConv?.name || 'Arrastra tu conversión .xlsx o haz clic'}</span>
                     <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => {setFileConv(e.target.files?.[0] || null); e.target.value=''}}/>
                   </label>
-                </div>
+                  {fileConv && <div className="absolute bottom-4 right-4 text-[10px] bg-green-500/20 text-green-400 px-2 py-1 rounded-full uppercase font-bold">Cargado</div>}
+                </motion.div>
 
               </div>
 
@@ -361,39 +402,72 @@ export default function GenerarResumen() {
 
           {tab === 'resumen' && (
             <motion.div key="resumen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-5xl flex flex-col h-full">
-              <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-                <div className="text-sm font-bold text-blue-400">Resumen de {resumenData.length} Vehículos</div>
-                <div className="flex gap-2">
-                   <Btn onClick={copiarTabla} variant="secondary" size="sm">📋 Copiar HTML</Btn>
-                   <Btn onClick={() => exportarImagen('png')} variant="secondary" size="sm">🖼️ PNG</Btn>
-                   <Btn onClick={() => exportarImagen('jpg')} variant="secondary" size="sm">🖼️ JPG</Btn>
-                   <Btn onClick={exportarPDF} variant="secondary" size="sm">📄 PDF</Btn>
+              <div className="w-full flex justify-between items-center mb-6 mt-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-500/20 rounded-xl text-blue-400 border border-blue-500/30">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-100 tracking-tight">Resumen Ejecutivo</h2>
+                    <p className="text-xs text-blue-400/80 uppercase tracking-widest font-mono mt-0.5">{resumenData.length} Vehículos Procesados</p>
+                  </div>
+                </div>
+                
+                <div className="flex bg-black/20 p-1.5 rounded-xl border border-white/5 shadow-inner">
+                   <Btn onClick={copiarTabla} variant="secondary" style={{ borderRadius: '8px', padding: '8px 16px', background: 'transparent', border: 'none', color: '#cbd5e1' }} className="hover:bg-white/10 hover:text-white transition-all text-sm">📋 Html</Btn>
+                   <div className="w-px bg-white/10 mx-1"></div>
+                   <Btn onClick={() => exportarImagen('png')} variant="secondary" style={{ borderRadius: '8px', padding: '8px 16px', background: 'transparent', border: 'none', color: '#cbd5e1' }} className="hover:bg-white/10 hover:text-white transition-all text-sm">🖼️ PNG</Btn>
+                   <Btn onClick={() => exportarImagen('jpg')} variant="secondary" style={{ borderRadius: '8px', padding: '8px 16px', background: 'transparent', border: 'none', color: '#cbd5e1' }} className="hover:bg-white/10 hover:text-white transition-all text-sm">🖼️ JPG</Btn>
+                   <div className="w-px bg-white/10 mx-1"></div>
+                   <Btn onClick={exportarPDF} variant="primary" style={{ borderRadius: '8px', padding: '8px 20px', background: 'linear-gradient(to right, #3b82f6, #6366f1)', border: 'none', fontWeight: 'bold' }} className="shadow-lg shadow-blue-500/20">📄 Exportar PDF</Btn>
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl shadow-lg border border-black/10 flex-1 overflow-auto custom-scrollbar p-6">
+              <div className="bg-white rounded-2xl shadow-2xl overflow-hidden flex-1 flex flex-col relative ring-1 ring-black/5" style={{ minHeight: 0 }}>
                 {resumenData.length === 0 ? (
-                  <div className="text-center text-gray-400 font-bold py-20 uppercase tracking-widest text-xs">Sin datos procesados</div>
+                  <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/50">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-gray-300 mb-4"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                    <div className="text-gray-400 font-bold uppercase tracking-widest text-xs">Sin datos procesados</div>
+                  </div>
                 ) : (
-                  <div ref={tableRef} style={{ background: '#ffffff', padding: '10px' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'Arial, sans-serif' }}>
-                      <thead>
-                        <tr>
-                          {Object.keys(resumenData[0] || {}).map(k => (
-                            <th key={k} style={TH_STYLE}>{k}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {resumenData.map((row, i) => (
-                          <tr key={i} style={{ background: i % 2 === 0 ? '#ffffff' : '#f0f6ff' }}>
-                             {Object.values(row).map((v: any, j) => (
-                               <td key={j} style={TD_STYLE}>{v}</td>
-                             ))}
+                  <div className="overflow-auto custom-scrollbar flex-1 relative bg-gray-50/30 p-4">
+                    <div ref={tableRef} style={{ background: '#ffffff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }} className="min-w-max">
+                      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: 'Inter, Arial, sans-serif' }}>
+                        <thead>
+                          <tr className="shadow-sm">
+                            {Object.keys(resumenData[0] || {}).map((k, idx, arr) => (
+                              <th key={k} style={{
+                                ...TH_STYLE,
+                                border: '1px solid #0f172a',
+                                borderRight: idx === arr.length - 1 ? '1px solid #0f172a' : 'none',
+                                background: 'linear-gradient(to bottom, #1e293b, #0f172a)',
+                                padding: '12px 14px',
+                                fontSize: '12px',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em'
+                              }}>{k}</th>
+                            ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {resumenData.map((row, i) => (
+                            <tr key={i} className="hover:bg-blue-50/80 transition-colors duration-150" style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                               {Object.values(row).map((v: any, j, arr) => (
+                                 <td key={j} style={{
+                                   ...TD_STYLE,
+                                   border: '1px solid #cbd5e1',
+                                   borderTop: 'none',
+                                   borderRight: j === arr.length - 1 ? '1px solid #cbd5e1' : 'none',
+                                   padding: '10px 14px',
+                                   color: '#334155',
+                                   fontWeight: 600
+                                 }}>{v}</td>
+                               ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>

@@ -28,13 +28,15 @@ interface BtnProps {
   title?:    string
   style?:    React.CSSProperties
   type?:     'button' | 'submit' | 'reset'
+  className?: string
 }
 
-export function Btn({ children, variant = 'secondary', size = 'md', disabled, onClick, title, style, type = 'button' }: BtnProps) {
+export function Btn({ children, variant = 'secondary', size = 'md', disabled, onClick, title, style, type = 'button', className }: BtnProps) {
   const [active, setActive] = useState(false)
   return (
     <button
       type={type}
+      className={className}
       disabled={disabled}
       onClick={onClick}
       title={title}
