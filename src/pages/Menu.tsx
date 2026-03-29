@@ -22,6 +22,16 @@ interface AppInfo {
 
 const APPS: AppInfo[] = [
   {
+    id: 'generar-resumen',
+    title: 'Generar Resumen',
+    description: 'Generación de resumen de vehículos sin conductor y cálculos de tiempos, distancias, M3 y comunas.',
+    path: '/generar-resumen',
+    icon: <BarChart2 className="h-5 w-5" />,
+    tag: 'Reportes',
+    tagColor: 'text-[#388bfd] bg-[#388bfd]/10 border-[#388bfd]/20',
+    area: 'md:col-span-1 lg:col-span-1'
+  },
+  {
     id: 'ruteo-pr',
     title: 'Ruteo AM',
     description: 'Pre Ruteo y Post Ruteo con polinomio, scoring, y exportación de correo para operaciones IKEA.',
@@ -109,16 +119,6 @@ const APPS: AppInfo[] = [
     icon: <BarChart2 className="h-5 w-5" />,
     tag: 'Operaciones',
     tagColor: 'text-[#3fb950] bg-[#3fb950]/10 border-[#3fb950]/20',
-    area: 'md:col-span-1 lg:col-span-1'
-  },
-  {
-    id: 'generar-resumen',
-    title: 'Generar Resumen',
-    description: 'Generación de resumen de vehículos sin conductor y cálculos de tiempos, distancias, M3 y comunas.',
-    path: '/generar-resumen',
-    icon: <BarChart2 className="h-5 w-5" />,
-    tag: 'Reportes',
-    tagColor: 'text-[#388bfd] bg-[#388bfd]/10 border-[#388bfd]/20',
     area: 'md:col-span-1 lg:col-span-1'
   },
 ]
