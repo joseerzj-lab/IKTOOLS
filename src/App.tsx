@@ -10,6 +10,7 @@ import RuteoPR from './pages/RuteoPR'
 import ReporteRutas from './pages/ReporteRutas'
 import RuteadorV9 from './pages/RuteadorV9'
 import ActualizarOtif from './pages/ActualizarOtif'
+import GenerarResumen from './pages/GenerarResumen'
 
 import { ThemeBackground } from './components/ui/ThemeBackground'
 
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/reporte" element={<ReporteRutas />} />
       <Route path="/ruteador" element={<RuteadorV9 />} />
       <Route path="/otif" element={<ActualizarOtif />} />
+      <Route path="/generar-resumen" element={<GenerarResumen />} />
     </Routes>
     </>
   )
