@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import * as XLSX from 'xlsx'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
 import { PageShell, Btn } from '../ui/DS'
@@ -161,14 +161,15 @@ export default function GenerarResumen() {
 
       for (const veh in vehicleGroups) {
         const rows = vehicleGroups[veh]
-        // Regla: Tomar vehículos donde la columna conductor esté vacía.
-        // Si no está activado 'Incluir Postventa y Proyectos', ignoramos si tiene un conductor asignado
-        const tieneConductor = rows.some(r => String(r[sC.conductor] || '').trim() !== '')
-        if (!incluirPostVenta && tieneConductor) continue 
-
-
         // Determinar Vehículo Final
         const vehFinal = ruteoDict[veh] || veh
+
+        // Excepción Automática: si es VEH98 o VEH99 se toman siempre, incluso si tienen conductor
+        const esExcepcion = vehFinal.toUpperCase() === 'VEH98' || vehFinal.toUpperCase() === 'VEH99'
+        
+        // Si no está activado 'Incluir Postventa y Proyectos' y tampoco es excepción, ignoramos si tiene un conductor asignado
+        const tieneConductor = rows.some(r => String(r[sC.conductor] || '').trim() !== '')
+        if (!incluirPostVenta && !esExcepcion && tieneConductor) continue 
 
         let minSec = Infinity
         let maxSec = -Infinity
@@ -227,6 +228,11 @@ export default function GenerarResumen() {
 
         const zona = esExtraurbana ? 'Extraurbano' : 'Urbano'
         const tipoTicket = vehFinal.toUpperCase().includes('MINI') ? 'MiniTicket' : 'Ticket Regular'
+        
+        // Asignación de tipo de vehículo especial
+        let tipoVehiculo = ''
+        if (vehFinal.toUpperCase() === 'VEH98') tipoVehiculo = 'Proyectos'
+        if (vehFinal.toUpperCase() === 'VEH99') tipoVehiculo = 'Postventa'
 
         const formatter = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 })
 
@@ -241,7 +247,7 @@ export default function GenerarResumen() {
           M3: formatter.format(totalM3),
           'Horario Salida': '',
           Zona: zona,
-          'Tipo Vehiculo': '',
+          'Tipo Vehiculo': tipoVehiculo,
           'Tipo Ticket': tipoTicket
         })
       }
@@ -249,7 +255,9 @@ export default function GenerarResumen() {
       summaries.sort((a, b) => String(a.Vehículo).localeCompare(String(b.Vehículo)))
       setResumenData(summaries)
       addLog(`Resumen generado para ${summaries.length} vehículos.`, 'ok')
-      setTab('resumen')
+      
+      // Fix rendering bug: wait a tick so DOM updates before switching tab
+      setTimeout(() => setTab('resumen'), 50)
     } catch (err: any) {
       addLog(`Error: ${err.message}`, 'err')
     } finally {
@@ -335,10 +343,9 @@ export default function GenerarResumen() {
       <GlassHeader appName="Generar Resumen" icon="📊" tabs={TABS} activeTab={tab} onTabChange={(id) => setTab(id as any)} />
 
       <div className="flex-1 overflow-hidden flex flex-col items-center p-6 custom-scrollbar" style={{ background: TC.bg }}>
-        <AnimatePresence mode="wait">
-          {tab === 'archivos' && (
-            <motion.div key="archivos" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="w-full max-w-4xl space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl pt-4">
+        {tab === 'archivos' && (
+          <div className="w-full max-w-4xl space-y-6 animate-in fade-in duration-300">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl pt-4">
                 
                 {/* Carta SimpliRoute */}
                 <motion.div 
@@ -397,21 +404,21 @@ export default function GenerarResumen() {
                   {processing ? 'Procesando...' : '▶ Generar Resumen'}
                 </Btn>
               </div>
-            </motion.div>
-          )}
+            </div>
+        )}
 
-          {tab === 'resumen' && (
-            <motion.div key="resumen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-5xl flex-1 flex flex-col min-h-0">
-              <div className="w-full flex justify-between items-center mb-6 mt-2 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-blue-500/20 rounded-xl text-blue-400 border border-blue-500/30">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-100 tracking-tight">Resumen Ejecutivo</h2>
-                    <p className="text-xs text-blue-400/80 uppercase tracking-widest font-mono mt-0.5">{resumenData.length} Vehículos Procesados</p>
-                  </div>
+        {tab === 'resumen' && (
+          <div className="w-full max-w-5xl flex-1 flex flex-col min-h-0 animate-in fade-in duration-300">
+            <div className="w-full flex justify-between items-center mb-6 mt-2 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-500/20 rounded-xl text-blue-400 border border-blue-500/30">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
                 </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-100 tracking-tight">Tabla Resumen</h2>
+                  <p className="text-xs text-blue-400/80 uppercase tracking-widest font-mono mt-0.5">{resumenData.length} Vehículos Procesados</p>
+                </div>
+              </div>
                 
                 <div className="flex bg-black/20 p-1.5 rounded-xl border border-white/5 shadow-inner">
                    <Btn onClick={copiarTabla} variant="secondary" style={{ borderRadius: '8px', padding: '8px 16px', background: 'transparent', border: 'none', color: '#cbd5e1' }} className="hover:bg-white/10 hover:text-white transition-all text-sm">📋 Html</Btn>
@@ -438,9 +445,10 @@ export default function GenerarResumen() {
                             {Object.keys(resumenData[0] || {}).map((k, idx, arr) => (
                               <th key={k} style={{
                                 ...TH_STYLE,
-                                border: '1px solid #0f172a',
-                                borderRight: idx === arr.length - 1 ? '1px solid #0f172a' : 'none',
-                                background: 'linear-gradient(to bottom, #1e293b, #0f172a)',
+                                border: '1px solid #94a3b8',
+                                borderRight: idx === arr.length - 1 ? '1px solid #94a3b8' : 'none',
+                                background: 'linear-gradient(to bottom, #f8fafc, #e2e8f0)',
+                                color: '#1e293b',
                                 padding: '12px 14px',
                                 fontSize: '12px',
                                 textTransform: 'uppercase',
@@ -471,9 +479,8 @@ export default function GenerarResumen() {
                   </div>
                 )}
               </div>
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
 
         {logs.length > 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-4xl mt-8">
