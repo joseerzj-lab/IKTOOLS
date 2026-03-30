@@ -164,12 +164,14 @@ export default function GenerarResumen() {
         // Determinar Vehículo Final
         const vehFinal = ruteoDict[veh] || veh
 
-        // Excepción Automática: si es VEH98 o VEH99 se toman siempre, incluso si tienen conductor
-        const esExcepcion = vehFinal.toUpperCase() === 'VEH98' || vehFinal.toUpperCase() === 'VEH99'
+        // Excluir VEH98 y VEH99 de la tabla resumen
+        if (vehFinal.toUpperCase() === 'VEH98' || vehFinal.toUpperCase() === 'VEH99') {
+          continue
+        }
         
-        // Si no está activado 'Incluir Postventa y Proyectos' y tampoco es excepción, ignoramos si tiene un conductor asignado
+        // Si no está activado 'Incluir Postventa y Proyectos', filtramos si tiene un conductor asignado
         const tieneConductor = rows.some(r => String(r[sC.conductor] || '').trim() !== '')
-        if (!incluirPostVenta && !esExcepcion && tieneConductor) continue 
+        if (!incluirPostVenta && tieneConductor) continue 
 
         let minSec = Infinity
         let maxSec = -Infinity
@@ -228,11 +230,6 @@ export default function GenerarResumen() {
 
         const zona = esExtraurbana ? 'Extraurbano' : 'Urbano'
         const tipoTicket = vehFinal.toUpperCase().includes('MINI') ? 'MiniTicket' : 'Ticket Regular'
-        
-        // Asignación de tipo de vehículo especial
-        let tipoVehiculo = ''
-        if (vehFinal.toUpperCase() === 'VEH98') tipoVehiculo = 'Proyectos'
-        if (vehFinal.toUpperCase() === 'VEH99') tipoVehiculo = 'Postventa'
 
         const formatter = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 })
 
@@ -247,7 +244,7 @@ export default function GenerarResumen() {
           M3: formatter.format(totalM3),
           'Horario Salida': '',
           Zona: zona,
-          'Tipo Vehiculo': tipoVehiculo,
+          'Tipo Vehiculo': '',
           'Tipo Ticket': tipoTicket
         })
       }
@@ -445,10 +442,10 @@ export default function GenerarResumen() {
                             {Object.keys(resumenData[0] || {}).map((k, idx, arr) => (
                               <th key={k} style={{
                                 ...TH_STYLE,
-                                border: '1px solid #94a3b8',
-                                borderRight: idx === arr.length - 1 ? '1px solid #94a3b8' : 'none',
-                                background: 'linear-gradient(to bottom, #f8fafc, #e2e8f0)',
-                                color: '#1e293b',
+                                border: '1px solid #7dd3fc',
+                                borderRight: idx === arr.length - 1 ? '1px solid #7dd3fc' : 'none',
+                                background: 'linear-gradient(to bottom, #e0f2fe, #bae6fd)',
+                                color: '#0369a1',
                                 padding: '12px 14px',
                                 fontSize: '12px',
                                 textTransform: 'uppercase',
