@@ -401,8 +401,8 @@ export default function GenerarResumen() {
           )}
 
           {tab === 'resumen' && (
-            <motion.div key="resumen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-5xl flex flex-col h-full">
-              <div className="w-full flex justify-between items-center mb-6 mt-2">
+            <motion.div key="resumen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="w-full max-w-5xl flex-1 flex flex-col min-h-0">
+              <div className="w-full flex justify-between items-center mb-6 mt-2 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-blue-500/20 rounded-xl text-blue-400 border border-blue-500/30">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
