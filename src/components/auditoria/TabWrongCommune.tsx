@@ -161,6 +161,14 @@ export default function TabWrongCommune({
       else if (isVisible) setTimeout(att, 200)
     }
     if (isVisible && !mapInitRef.current) att()
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        mapInitRef.current = false
+      }
+    }
   }, [isVisible])
 
   useEffect(() => {
@@ -217,17 +225,20 @@ export default function TabWrongCommune({
       if (isConf) {
         const c = conflicts.find(x => x.iso === r.iso)
         if (c) {
-          mk.bindPopup(`<div style="font-family:sans-serif;font-size:12px;padding:12px;min-width:200px">
-              <div style="font-weight:800;font-size:14px;margin-bottom:4px;color:#fff">${r.iso}</div>
-              <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:4px">${r.veh}</div>
-              <div style="color:rgba(255,255,255,0.8);font-size:11px;margin-bottom:8px;line-height:1.3;max-width:260px">${c.dir}</div>
-              <div style="margin:8px 0;color:#f87171;font-weight:700;background:rgba(248,81,73,0.1);padding:6px;border-radius:6px;border:1px solid rgba(248,81,73,0.2)">
-                <div style="font-size:9px;text-transform:uppercase;opacity:0.7">Discrepancia</div>
-                ${c.comunaDireccion} → ${c.comunaReal}
+          mk.bindPopup(`<div style="font-family:'Inter',sans-serif;font-size:12px;padding:4px;min-width:260px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+                <div style="font-weight:900;font-size:16px;letter-spacing:-0.02em;color:#fff">${r.iso}</div>
+                <div style="background:rgba(255,255,255,0.1);padding:3px 6px;border-radius:4px;font-size:10px;color:rgba(255,255,255,0.8);font-family:monospace">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</div>
               </div>
-              <div style="display:flex;gap:6;margin-top:10px">
-                <button style="background:#238636;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;flex:1;font-weight:800;font-size:11px" onclick="window.dispatchEvent(new CustomEvent('map-resolve', {detail:'${r.iso}'}))">${isRes ? '↩ Reabrir' : '✓ Resolver'}</button>
-                <button style="background:#f87171;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;flex:1;font-weight:800;font-size:11px" onclick="window.dispatchEvent(new CustomEvent('map-flag', {detail:'${r.iso}'}))">${isFlg ? '✕ Quitar Alerta' : '⚠ Alertar'}</button>
+              <div style="color:rgba(255,255,255,0.5);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">${r.veh}</div>
+              <div style="color:rgba(255,255,255,0.85);font-size:12px;margin-bottom:12px;line-height:1.4;max-width:280px">${c.dir}</div>
+              <div style="margin:12px 0;color:#ff6b6b;font-weight:700;background:rgba(255,107,107,0.1);padding:8px 12px;border-radius:8px;border:1px solid rgba(255,107,107,0.2)">
+                <div style="font-size:9px;text-transform:uppercase;opacity:0.8;margin-bottom:4px">Discrepancia detectada</div>
+                <span style="color:#fff">${c.comunaDireccion}</span> <span style="opacity:0.5;margin:0 4px">→</span> <span style="color:#ff6b6b">${c.comunaReal}</span>
+              </div>
+              <div style="display:flex;gap:8;margin-top:14px">
+                <button style="background:linear-gradient(135deg, #10b981, #059669);color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;flex:1;font-weight:800;font-size:12px;box-shadow:0 2px 8px rgba(16,185,129,0.3)" onclick="window.dispatchEvent(new CustomEvent('map-resolve', {detail:'${r.iso}'}))">${isRes ? '↩ Reabrir' : '✓ Resolver'}</button>
+                <button style="background:linear-gradient(135deg, #ef4444, #dc2626);color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;flex:1;font-weight:800;font-size:12px;box-shadow:0 2px 8px rgba(239,68,68,0.3)" onclick="window.dispatchEvent(new CustomEvent('map-flag', {detail:'${r.iso}'}))">${isFlg ? '✕ Quitar Alerta' : '⚠ Alertar'}</button>
               </div>
             </div>`, { className: 'premium-popup', autoPan: false })
         }
@@ -295,7 +306,7 @@ export default function TabWrongCommune({
     if (routePt && routePt.lat !== null && routePt.lng !== null) {
       if (zoomOnFocusRef.current) {
         const targetPt = map.project([routePt.lat, routePt.lng], 15)
-        targetPt.y -= 140
+        targetPt.y -= 50
         const shiftedLatLng = map.unproject(targetPt, 15)
         map.flyTo(shiftedLatLng, 15, { duration: 0.6 })
       }
@@ -386,6 +397,7 @@ export default function TabWrongCommune({
             const isFlg = flaggedConflicts.has(c.iso)
             const isCopied = copiedId === c.iso
             const isCopiedDir = copiedId === c.iso + '_dir'
+            const isCopiedCoord = copiedId === c.iso + '_coord'
             
             return (
               <motion.div 
@@ -461,7 +473,7 @@ export default function TabWrongCommune({
                             onClick={(e) => { e.stopPropagation(); copyText(c.iso, c.iso) }}
                             style={{ 
                               background:'rgba(56,139,253,0.1)', color:C.blue, border:'none', 
-                              fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:R.sm, cursor:'pointer' 
+                              fontSize:9, fontWeight:800, padding:'3px 8px', borderRadius:R.sm, cursor:'pointer' 
                             }}>
                             {isCopied ? '✓ ISO' : '📋 ISO'}
                          </button>
@@ -469,18 +481,29 @@ export default function TabWrongCommune({
                             onClick={(e) => { e.stopPropagation(); copyText(c.dir, c.iso + '_dir') }}
                             style={{ 
                               background:'rgba(255,255,255,0.05)', color:C.textMuted, border:'none', 
-                              fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:R.sm, cursor:'pointer' 
+                              fontSize:9, fontWeight:800, padding:'3px 8px', borderRadius:R.sm, cursor:'pointer' 
                             }}>
                             {isCopiedDir ? '✓ DIR' : '📋 DIRECCIÓN'}
+                         </button>
+                         <button 
+                            onClick={(e) => { e.stopPropagation(); copyText(`${c.lat}, ${c.lng}`, c.iso + '_coord') }}
+                            style={{ 
+                              background:'rgba(46,160,67,0.1)', color:C.green, border:'none', 
+                              fontSize:9, fontWeight:800, padding:'3px 8px', borderRadius:R.sm, cursor:'pointer' 
+                            }}>
+                            {isCopiedCoord ? '✓ COORD' : '📍 COORD'}
                          </button>
                       </div>
                    </div>
 
                    {/* Commune Conflict */}
-                   <div style={{ display:'flex', gap:6, alignItems:'center', background:'rgba(248,81,73,0.1)', padding:'5px 10px', borderRadius:R.md, border:'1px solid rgba(248,81,73,0.1)' }}>
-                      <span style={{ fontSize:10, fontWeight:800, color:C.red }}>{c.comunaDireccion}</span>
-                      <span style={{ fontSize:9, color:C.textFaint }}>→</span>
-                      <span style={{ fontSize:10, fontWeight:800, color:C.blue }}>{c.comunaReal}</span>
+                   <div style={{ display:'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                     <div style={{ display:'flex', gap:6, alignItems:'center', background:'rgba(248,81,73,0.1)', padding:'5px 10px', borderRadius:R.md, border:'1px solid rgba(248,81,73,0.1)' }}>
+                        <span style={{ fontSize:10, fontWeight:800, color:C.red }}>{c.comunaDireccion}</span>
+                        <span style={{ fontSize:9, color:C.textFaint }}>→</span>
+                        <span style={{ fontSize:10, fontWeight:800, color:C.blue }}>{c.comunaReal}</span>
+                     </div>
+                     <span style={{ fontSize:10, color:C.textMuted, fontFamily: 'monospace' }}>{c.lat.toFixed(4)}, {c.lng.toFixed(4)}</span>
                    </div>
                 </div>
               </motion.div>

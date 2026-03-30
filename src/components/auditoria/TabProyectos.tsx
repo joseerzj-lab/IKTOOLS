@@ -91,6 +91,14 @@ export default function TabProyectos({
       else if (isVisible) setTimeout(att, 200)
     }
     if (isVisible && !mapInitRef.current) att()
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        mapInitRef.current = false
+      }
+    }
   }, [isVisible])
 
   useEffect(() => {
@@ -143,15 +151,18 @@ export default function TabProyectos({
 
       const mk = L.marker([r.lat!, r.lng!], { icon, zIndexOffset: isF ? 1000 : (!isRes ? 500 : 0) })
       
-      mk.bindPopup(`<div style="font-family:sans-serif;font-size:12px;padding:12px;min-width:200px">
-          <div style="font-weight:800;font-size:14px;margin-bottom:4px;color:#fff">${r.iso}</div>
-          <div style="color:rgba(255,255,255,0.6);font-size:10px;margin-bottom:4px">${r.veh}</div>
-          <div style="color:rgba(255,255,255,0.8);font-size:11px;margin-bottom:8px;line-height:1.3;max-width:260px">${r.dir}</div>
-          <div style="display:flex;gap:6;margin-top:10px">
-            <button style="background:#238636;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;flex:1;font-weight:800;font-size:11px" onclick="window.dispatchEvent(new CustomEvent('map-resolve-proyecto', {detail:'${r.iso}'}))">${isRes ? '↩ Reabrir' : '✓ Resolver'}</button>
-            <button style="background:#f87171;color:#fff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;flex:1;font-weight:800;font-size:11px" onclick="window.dispatchEvent(new CustomEvent('map-flag-proyecto', {detail:'${r.iso}'}))">${isFlg ? '✕ Quitar Alerta' : '⚠ Alertar'}</button>
-          </div>
-        </div>`, { className: 'premium-popup', autoPan: false })
+      mk.bindPopup(`<div style="font-family:'Inter',sans-serif;font-size:12px;padding:4px;min-width:260px">
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+                <div style="font-weight:900;font-size:16px;letter-spacing:-0.02em;color:#fff">${r.iso}</div>
+                <div style="background:rgba(255,255,255,0.1);padding:3px 6px;border-radius:4px;font-size:10px;color:rgba(255,255,255,0.8);font-family:monospace">${r.lat!.toFixed(5)}, ${r.lng!.toFixed(5)}</div>
+              </div>
+              <div style="color:rgba(255,255,255,0.5);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px">${r.veh}</div>
+              <div style="color:rgba(255,255,255,0.85);font-size:12px;margin-bottom:12px;line-height:1.4;max-width:280px">${r.dir}</div>
+              <div style="display:flex;gap:8;margin-top:14px">
+                <button style="background:linear-gradient(135deg, #10b981, #059669);color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;flex:1;font-weight:800;font-size:12px;box-shadow:0 2px 8px rgba(16,185,129,0.3)" onclick="window.dispatchEvent(new CustomEvent('map-resolve-proyecto', {detail:'${r.iso}'}))">${isRes ? '↩ Reabrir' : '✓ Resolver'}</button>
+                <button style="background:linear-gradient(135deg, #ef4444, #dc2626);color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;flex:1;font-weight:800;font-size:12px;box-shadow:0 2px 8px rgba(239,68,68,0.3)" onclick="window.dispatchEvent(new CustomEvent('map-flag-proyecto', {detail:'${r.iso}'}))">${isFlg ? '✕ Quitar Alerta' : '⚠ Alertar'}</button>
+              </div>
+            </div>`, { className: 'premium-popup', autoPan: false })
       
       mk.on('click', () => { 
         zoomOnFocusRef.current = false
@@ -210,7 +221,7 @@ export default function TabProyectos({
     if (routePt && routePt.lat !== null && routePt.lng !== null) {
       if (zoomOnFocusRef.current) {
         const targetPt = map.project([routePt.lat, routePt.lng], 15)
-        targetPt.y -= 140
+        targetPt.y -= 50
         const shiftedLatLng = map.unproject(targetPt, 15)
         map.flyTo(shiftedLatLng, 15, { duration: 0.6 })
       }
@@ -300,6 +311,7 @@ export default function TabProyectos({
             const isFlg = flaggedProyectos.has(c.iso)
             const isCopied = copiedId === c.iso
             const isCopiedDir = copiedId === c.iso + '_dir'
+            const isCopiedCoord = copiedId === c.iso + '_coord'
             
             return (
               <motion.div 
@@ -374,7 +386,7 @@ export default function TabProyectos({
                             onClick={(e) => { e.stopPropagation(); copyText(c.iso, c.iso) }}
                             style={{ 
                               background:'rgba(56,139,253,0.1)', color:C.blue, border:'none', 
-                              fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:R.sm, cursor:'pointer' 
+                              fontSize:9, fontWeight:800, padding:'3px 8px', borderRadius:R.sm, cursor:'pointer' 
                             }}>
                             {isCopied ? '✓ ISO' : '📋 ISO'}
                          </button>
@@ -382,12 +394,27 @@ export default function TabProyectos({
                             onClick={(e) => { e.stopPropagation(); copyText(c.dir, c.iso + '_dir') }}
                             style={{ 
                               background:'rgba(255,255,255,0.05)', color:C.textMuted, border:'none', 
-                              fontSize:9, fontWeight:800, padding:'2px 8px', borderRadius:R.sm, cursor:'pointer' 
+                              fontSize:9, fontWeight:800, padding:'3px 8px', borderRadius:R.sm, cursor:'pointer' 
                             }}>
                             {isCopiedDir ? '✓ DIR' : '📋 DIRECCIÓN'}
                          </button>
+                         <button 
+                            onClick={(e) => { e.stopPropagation(); copyText(`${c.lat}, ${c.lng}`, c.iso + '_coord') }}
+                            style={{ 
+                              background:'rgba(46,160,67,0.1)', color:C.green, border:'none', 
+                              fontSize:9, fontWeight:800, padding:'3px 8px', borderRadius:R.sm, cursor:'pointer' 
+                            }}>
+                            {isCopiedCoord ? '✓ COORD' : '📍 COORD'}
+                         </button>
                       </div>
                    </div>
+
+                   {/* Coordinate display right below */}
+                   {c.lat !== null && c.lng !== null && (
+                     <div style={{ display:'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: 2 }}>
+                       <span style={{ fontSize:10, color:C.textMuted, fontFamily: 'monospace' }}>{c.lat.toFixed(4)}, {c.lng.toFixed(4)}</span>
+                     </div>
+                   )}
                 </div>
               </motion.div>
             )

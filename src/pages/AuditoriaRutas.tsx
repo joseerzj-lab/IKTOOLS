@@ -458,57 +458,43 @@ export default function AuditoriaRutas() {
           )}
         </AnimatePresence>
 
-        {/* TabWrongCommune — ALWAYS mounted, never unmounts (Leaflet stays alive).
-            Uses opacity/pointerEvents to hide/show instead of mounting/unmounting.
-            This is the KEY fix for the map disappearing bug. */}
-        <div
-          style={{
-            position: 'absolute', inset: 0,
-            opacity: activeTab === 'tab-geo' ? 1 : 0,
-            pointerEvents: activeTab === 'tab-geo' ? 'auto' : 'none',
-            transition: 'opacity 0.1s',
-            zIndex: activeTab === 'tab-geo' ? 1 : 0,
-          }}
-        >
-          <TabWrongCommune
-            routeData={routeData}
-            conflicts={conflicts}
-            resolvedConflicts={resolvedConflicts}
-            flaggedConflicts={flaggedConflicts}
-            onToggleResolve={toggleResolveConflict}
-            onToggleFlag={toggleFlagConflict}
-            onResolveAll={handleResolveAll}
-            onFlagAll={handleFlagAll}
-            hasData={!!routeData.length}
-            isReady={comunasReady}
-            onRunAnalysis={handleGeoAnalysis}
-            excludedVehicles={excludedVehicles}
-            isVisible={activeTab === 'tab-geo'}
-          />
-        </div>
-        <div
-          style={{
-            position: 'absolute', inset: 0,
-            opacity: activeTab === 'tab-proyectos' ? 1 : 0,
-            pointerEvents: activeTab === 'tab-proyectos' ? 'auto' : 'none',
-            transition: 'opacity 0.1s',
-            zIndex: activeTab === 'tab-proyectos' ? 1 : 0,
-          }}
-        >
-          <TabProyectos
-            routeData={proyectosData}
-            resolvedProyectos={resolvedProyectos}
-            flaggedProyectos={flaggedProyectos}
-            onToggleResolve={toggleResolveProyecto}
-            onToggleFlag={toggleFlagProyecto}
-            onResolveAll={handleResolveAllProyectos}
-            onFlagAll={handleFlagAllProyectos}
-            hasData={!!proyectosData.length}
-            isReady={true}
-            excludedVehicles={excludedVehicles}
-            isVisible={activeTab === 'tab-proyectos'}
-          />
-        </div>
+        {activeTab === 'tab-geo' && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+            <TabWrongCommune
+              routeData={routeData}
+              conflicts={conflicts}
+              resolvedConflicts={resolvedConflicts}
+              flaggedConflicts={flaggedConflicts}
+              onToggleResolve={toggleResolveConflict}
+              onToggleFlag={toggleFlagConflict}
+              onResolveAll={handleResolveAll}
+              onFlagAll={handleFlagAll}
+              hasData={!!routeData.length}
+              isReady={comunasReady}
+              onRunAnalysis={handleGeoAnalysis}
+              excludedVehicles={excludedVehicles}
+              isVisible={true}
+            />
+          </div>
+        )}
+
+        {activeTab === 'tab-proyectos' && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+            <TabProyectos
+              routeData={proyectosData}
+              resolvedProyectos={resolvedProyectos}
+              flaggedProyectos={flaggedProyectos}
+              onToggleResolve={toggleResolveProyecto}
+              onToggleFlag={toggleFlagProyecto}
+              onResolveAll={handleResolveAllProyectos}
+              onFlagAll={handleFlagAllProyectos}
+              hasData={!!proyectosData.length}
+              isReady={true}
+              excludedVehicles={excludedVehicles}
+              isVisible={true}
+            />
+          </div>
+        )}
       </div>
 
       {/* Route map modal — uses vanilla Leaflet, no react-leaflet */}
