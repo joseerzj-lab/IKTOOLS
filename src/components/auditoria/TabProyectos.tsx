@@ -85,18 +85,16 @@ export default function TabProyectos({
   }
 
   useEffect(() => {
-    let t = 0
     const att = () => {
-      t++
       if (mapInitRef.current) return
-      if (mapDivRef.current?.offsetWidth! > 0) initMap()
-      else if (t < 50) setTimeout(att, 100)
+      if (mapDivRef.current && mapDivRef.current.offsetWidth > 0) initMap()
+      else if (isVisible) setTimeout(att, 200)
     }
-    att()
-  }, [])
+    if (isVisible && !mapInitRef.current) att()
+  }, [isVisible])
 
   useEffect(() => {
-    if (isVisible && mapRef.current) setTimeout(() => mapRef.current.invalidateSize(), 100)
+    if (isVisible && mapRef.current) setTimeout(() => mapRef.current.invalidateSize(), 300)
   }, [isVisible])
 
   useEffect(() => {

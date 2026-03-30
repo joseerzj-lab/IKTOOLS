@@ -390,7 +390,7 @@ export default function AuditoriaRutas() {
 
         {/* Non-map tabs: animated */}
         <AnimatePresence mode="wait" initial={false}>
-          {activeTab !== 'tab-geo' && (
+          {activeTab !== 'tab-geo' && activeTab !== 'tab-proyectos' && (
             <motion.div
               key={activeTab}
               initial={{ opacity: 0 }}
