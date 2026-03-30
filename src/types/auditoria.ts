@@ -8,6 +8,7 @@ export interface RouteRow {
   lat: number | null
   lng: number | null
   parada: number
+  conductor?: string
 }
 
 // ── Conflicto geográfico ────────────────────────────────────────
@@ -60,7 +61,7 @@ export interface SummaryRow {
   dir: string
   obs: string
   detalle: string
-  tipo: 'geo' | 'fuera' | 'ambos'
+  tipo: 'geo' | 'fuera' | 'ambos' | 'proyecto'
   status: 'pendiente' | 'alerta' | 'resuelto' | 'revisado' | 'aprobado'
   geoISO: string | null
   aKey: string | null
@@ -94,3 +95,5 @@ export type TabId =
   | 'tab-resumen'
   | 'tab-export'
   | 'tab-plan'
+  | 'tab-proyectos'
+  | 'tab-resumen-proyectos'

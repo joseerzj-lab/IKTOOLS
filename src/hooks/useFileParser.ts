@@ -31,6 +31,7 @@ function parseRows(rows: Record<string, string>[]): ParseResult {
   const cLat = findCol(keys, 'Latitud', 'Lat', 'latitude', 'lat', 'y', 'coord_y')
   const cLng = findCol(keys, 'Longitud', 'Lng', 'Lon', 'longitude', 'lng', 'lon', 'x', 'coord_x')
   const cPar = findCol(keys, 'Parada', 'Stop', 'stop', 'orden', 'order', 'secuencia', 'seq', 'numero', 'num', 'n')
+  const cCond = findCol(keys, 'Conductor', 'conductor', 'driver')
 
   if (!cTit) return { rows: [], hasGeo: false, error: `No se encontró columna Titulo/ISO. Columnas encontradas: ${keys.slice(0, 8).join(' | ')}` }
   if (!cVeh) return { rows: [], hasGeo: false, error: `No se encontró columna Vehículo. Columnas: ${keys.slice(0, 8).join(' | ')}` }
@@ -60,6 +61,7 @@ function parseRows(rows: Record<string, string>[]): ParseResult {
         lat:       isNaN(lat) ? null : lat,
         lng:       isNaN(lng) ? null : lng,
         parada:    cPar ? (parseInt(r[cPar]) || 0) : 0,
+        conductor: cCond ? (r[cCond] || '').trim() : '',
       }
     })
 

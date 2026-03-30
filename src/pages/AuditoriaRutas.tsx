@@ -11,7 +11,9 @@ const AUDITORIA_TABS: GlassHeaderTab[] = [
   { id: 'tab-plan',      label: 'Cargar Plan',   icon: '📥', badgeVariant: 'green'  },
   { id: 'tab-vehiculos', label: 'Route Plan',    icon: '📋', badgeVariant: 'blue'   },
   { id: 'tab-geo',       label: 'Wrong Commune', icon: '📍', badgeVariant: 'red'    },
+  { id: 'tab-proyectos', label: 'Proyectos',     icon: '🚧', badgeVariant: 'purple' },
   { id: 'tab-resumen',   label: 'Summary',       icon: '📊', badgeVariant: 'orange' },
+  { id: 'tab-resumen-proyectos', label: 'R. Proyectos', icon: '📋', badgeVariant: 'purple' },
   { id: 'tab-export',    label: 'Exportar',      icon: '🚀', badgeVariant: 'blue'   },
 ]
 import TabRoutePlan from '../components/auditoria/TabRoutePlan'
@@ -20,6 +22,7 @@ import TabSummary from '../components/auditoria/TabSummary'
 import TabExport from '../components/auditoria/TabExport'
 import RouteMapModal from '../components/auditoria/RouteMapModal'
 import TabPlanCarga from '../components/auditoria/TabPlanCarga'
+import TabProyectos from '../components/auditoria/TabProyectos'
 import { useTheme, getThemeColors } from '../context/ThemeContext'
 
 // ── Toast ─────────────────────────────────────────────────────────
@@ -120,6 +123,12 @@ export default function AuditoriaRutas() {
       return s ? new Set(JSON.parse(s)) : new Set()
     } catch { return new Set() }
   })
+  const [resolvedProyectos, setResolvedProyectos] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem('aud-res-proy-v2'); return s ? new Set(JSON.parse(s)) : new Set() } catch { return new Set() }
+  })
+  const [flaggedProyectos,  setFlaggedProyectos]  = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem('aud-flg-proy-v2'); return s ? new Set(JSON.parse(s)) : new Set() } catch { return new Set() }
+  })
 
   const { toast, showToast } = useToast()
 
@@ -136,6 +145,8 @@ export default function AuditoriaRutas() {
   useEffect(() => { localStorage.setItem('aud-res-conf-v2', JSON.stringify([...resolvedConflicts])) }, [resolvedConflicts])
   useEffect(() => { localStorage.setItem('aud-flg-conf-v2', JSON.stringify([...flaggedConflicts])) }, [flaggedConflicts])
   useEffect(() => { localStorage.setItem('aud-excl-veh-v2', JSON.stringify([...excludedVehicles])) }, [excludedVehicles])
+  useEffect(() => { localStorage.setItem('aud-res-proy-v2', JSON.stringify([...resolvedProyectos])) }, [resolvedProyectos])
+  useEffect(() => { localStorage.setItem('aud-flg-proy-v2', JSON.stringify([...flaggedProyectos])) }, [flaggedProyectos])
 
   const { parseFile, loading: parsing } = useFileParser()
   const { runAnalysis: runConflict }    = useConflictAnalysis()
@@ -164,6 +175,8 @@ export default function AuditoriaRutas() {
     setExcludedVehicles(new Set())
     setResolvedConflicts(new Set())
     setFlaggedConflicts(new Set())
+    setResolvedProyectos(new Set())
+    setFlaggedProyectos(new Set())
     showToast(`✓ ${result.rows.length} ISOs cargadas${result.hasGeo ? ' · con GPS' : ''}`)
 
     // Switch to Route Plan tab after loading
@@ -195,15 +208,38 @@ export default function AuditoriaRutas() {
     return allRows.filter(r => !excludedVehicles.has(r.veh))
   }, [conflicts, resolvedConflicts, flaggedConflicts, excludedVehicles])
 
+  const proyectosData = useMemo(() => {
+    return routeData.filter(r => r.conductor === 'Francisco Javier diaz zamora' || r.conductor === 'Proyecto_cocinas')
+  }, [routeData])
+
+  const proyectosSummaryRows = useMemo(() => {
+    const rows = proyectosData.filter(r => !excludedVehicles.has(r.veh)).map(r => {
+      const isRes = resolvedProyectos.has(r.iso)
+      const isFlg = flaggedProyectos.has(r.iso)
+      return {
+        iso: r.iso, veh: r.veh, dir: r.dir,
+        obs: 'Proyecto',
+        detalle: 'Revisión técnica de proyecto',
+        tipo: 'proyecto' as const,
+        status: isRes ? 'resuelto' : isFlg ? 'alerta' : 'pendiente',
+        geoISO: r.iso, aKey: null, riskLevel: null,
+      } as SummaryRow
+    })
+    const order: Record<string, number> = { alerta: 0, pendiente: 1, resuelto: 2 }
+    return rows.sort((a, b) => (order[a.status] || 0) - (order[b.status] || 0))
+  }, [proyectosData, resolvedProyectos, flaggedProyectos, excludedVehicles])
+
   const badges: Partial<Record<TabId, number>> = useMemo(() => {
     const geoAlertsCount = conflicts.filter(c => !excludedVehicles.has(c.veh) && !resolvedConflicts.has(c.iso)).length;
 
     return {
       'tab-vehiculos': routeData.length || undefined,
       'tab-geo':       geoAlertsCount || undefined,
+      'tab-proyectos': proyectosData.filter(c => !excludedVehicles.has(c.veh) && !resolvedProyectos.has(c.iso)).length || undefined,
       'tab-resumen':   summaryRows.filter(r => r.status !== 'resuelto').length || undefined,
+      'tab-resumen-proyectos': proyectosSummaryRows.filter(r => r.status !== 'resuelto').length || undefined,
     }
-  }, [routeData, conflicts, resolvedConflicts, summaryRows, excludedVehicles])
+  }, [routeData, conflicts, resolvedConflicts, summaryRows, excludedVehicles, proyectosData, resolvedProyectos, proyectosSummaryRows])
 
   const toggleResolveConflict = useCallback((iso: string) => {
     setResolvedConflicts(prev => {
@@ -277,11 +313,50 @@ export default function AuditoriaRutas() {
     showToast(flag ? '⚠ Alerta marcada' : '✕ Alerta removida')
   }, [showToast])
 
+  const toggleResolveProyecto = useCallback((iso: string) => {
+    setResolvedProyectos(prev => {
+      const n = new Set(prev)
+      if (n.has(iso)) n.delete(iso)
+      else { n.add(iso); setFlaggedProyectos(f => { const ff = new Set(f); ff.delete(iso); return ff }) }
+      return n
+    })
+  }, [])
+  const toggleFlagProyecto = useCallback((iso: string) => {
+    setFlaggedProyectos(prev => {
+      const n = new Set(prev)
+      if (n.has(iso)) n.delete(iso)
+      else { n.add(iso); setResolvedProyectos(r => { const rr = new Set(r); rr.delete(iso); return rr }) }
+      return n
+    })
+  }, [])
+  const handleResolveAllProyectos = useCallback((isos: string[]) => {
+    setResolvedProyectos(prev => { const next = new Set(prev); isos.forEach(iso => next.add(iso)); return next })
+    setFlaggedProyectos(prev => { const next = new Set(prev); isos.forEach(iso => next.delete(iso)); return next })
+    showToast(`✓ ${isos.length} proyectos resueltos`)
+  }, [showToast])
+  const handleFlagAllProyectos = useCallback((isos: string[]) => {
+    setFlaggedProyectos(prev => { const next = new Set(prev); isos.forEach(iso => next.add(iso)); return next })
+    setResolvedProyectos(prev => { const next = new Set(prev); isos.forEach(iso => next.delete(iso)); return next })
+    showToast(`⚠ ${isos.length} proyectos marcados`)
+  }, [showToast])
+  const handleSummaryResolveProyecto = useCallback((iso: string, _tipo: string, resolve: boolean) => {
+    if (resolve) setFlaggedProyectos(s => { const n = new Set(s); n.delete(iso); return n })
+    setResolvedProyectos(s => { const n = new Set(s); resolve ? n.add(iso) : n.delete(iso); return n })
+    showToast(resolve ? '✓ Resuelto' : '↩ Reabierto')
+  }, [showToast])
+  const handleSummaryFlagProyecto = useCallback((iso: string, _tipo: string, flag: boolean) => {
+    if (flag) setResolvedProyectos(s => { const n = new Set(s); n.delete(iso); return n })
+    setFlaggedProyectos(s => { const n = new Set(s); flag ? n.add(iso) : n.delete(iso); return n })
+    showToast(flag ? '⚠ Alerta marcada' : '✕ Alerta removida')
+  }, [showToast])
+
   const handleClear = useCallback(() => {
     setRouteData([])
     setConflicts([])
     setResolvedConflicts(new Set())
     setFlaggedConflicts(new Set())
+    setResolvedProyectos(new Set())
+    setFlaggedProyectos(new Set())
     setRouteMapVeh(null)
     setActiveTab('tab-plan')
   }, [])
@@ -361,6 +436,15 @@ export default function AuditoriaRutas() {
                   flaggedConflicts={flaggedConflicts}
                 />
               )}
+              {activeTab === 'tab-resumen-proyectos' && (
+                <TabSummary
+                  rows={proyectosSummaryRows}
+                  onResolve={handleSummaryResolveProyecto}
+                  onFlag={handleSummaryFlagProyecto}
+                  resolvedConflicts={resolvedProyectos}
+                  flaggedConflicts={flaggedProyectos}
+                />
+              )}
               {activeTab === 'tab-export' && (
                 <TabExport
                   routeData={routeData}
@@ -400,6 +484,29 @@ export default function AuditoriaRutas() {
             onRunAnalysis={handleGeoAnalysis}
             excludedVehicles={excludedVehicles}
             isVisible={activeTab === 'tab-geo'}
+          />
+        </div>
+        <div
+          style={{
+            position: 'absolute', inset: 0,
+            opacity: activeTab === 'tab-proyectos' ? 1 : 0,
+            pointerEvents: activeTab === 'tab-proyectos' ? 'auto' : 'none',
+            transition: 'opacity 0.1s',
+            zIndex: activeTab === 'tab-proyectos' ? 1 : 0,
+          }}
+        >
+          <TabProyectos
+            routeData={proyectosData}
+            resolvedProyectos={resolvedProyectos}
+            flaggedProyectos={flaggedProyectos}
+            onToggleResolve={toggleResolveProyecto}
+            onToggleFlag={toggleFlagProyecto}
+            onResolveAll={handleResolveAllProyectos}
+            onFlagAll={handleFlagAllProyectos}
+            hasData={!!proyectosData.length}
+            isReady={true}
+            excludedVehicles={excludedVehicles}
+            isVisible={activeTab === 'tab-proyectos'}
           />
         </div>
       </div>
