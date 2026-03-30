@@ -434,45 +434,71 @@ export default function GenerarResumen() {
                     <div className="text-gray-400 font-bold uppercase tracking-widest text-xs">Sin datos procesados</div>
                   </div>
                 ) : (
-                  <div className="overflow-auto custom-scrollbar flex-1 relative bg-gray-50/30 p-4">
-                    <div ref={tableRef} style={{ background: '#ffffff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }} className="min-w-max">
-                      <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: 'Inter, Arial, sans-serif' }}>
-                        <thead>
-                          <tr className="shadow-sm">
-                            {Object.keys(resumenData[0] || {}).map((k, idx, arr) => (
-                              <th key={k} style={{
-                                ...TH_STYLE,
-                                border: '1px solid #7dd3fc',
-                                borderRight: idx === arr.length - 1 ? '1px solid #7dd3fc' : 'none',
-                                background: 'linear-gradient(to bottom, #e0f2fe, #bae6fd)',
-                                color: '#0369a1',
-                                padding: '12px 14px',
-                                fontSize: '12px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.05em'
-                              }}>{k}</th>
+                  <div className="overflow-auto custom-scrollbar flex-1 relative bg-transparent p-4">
+
+                    {/* Tabla Oculta para Exportación (Con Formato Completo) */}
+                    <div style={{ position: 'absolute', top: '-10000px', left: '-10000px' }}>
+                      <div ref={tableRef} style={{ background: '#ffffff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0', width: 'max-content' }}>
+                        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: 'Inter, Arial, sans-serif' }}>
+                          <thead>
+                            <tr style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                              {Object.keys(resumenData[0] || {}).map((k, idx, arr) => (
+                                <th key={`exp-th-${k}`} style={{
+                                  ...TH_STYLE,
+                                  border: '1px solid #94a3b8',
+                                  borderRight: idx === arr.length - 1 ? '1px solid #94a3b8' : 'none',
+                                  background: '#cbd5e1', // Celeste grisáceo sin gradiente
+                                  color: '#000000',
+                                  padding: '12px 14px',
+                                  fontSize: '12px',
+                                  fontWeight: 'bold',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.05em'
+                                }}>{k}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {resumenData.map((row, i) => (
+                              <tr key={`exp-tr-${i}`} style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                                 {Object.values(row).map((v: any, j, arr) => (
+                                   <td key={`exp-td-${i}-${j}`} style={{
+                                     ...TD_STYLE,
+                                     border: '1px solid #cbd5e1',
+                                     borderTop: 'none',
+                                     borderRight: j === arr.length - 1 ? '1px solid #cbd5e1' : 'none',
+                                     padding: '10px 14px',
+                                     color: '#000000',
+                                     fontWeight: 600
+                                   }}>{v}</td>
+                                 ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Tabla Visible (Renderizado Directo, Rápido, Sin Formato Pesado, Sin Fondo Blanco) */}
+                    <table className="w-full text-left text-[13px] text-black min-w-max">
+                      <thead className="text-[11px] uppercase bg-black/5 text-black font-bold sticky top-0 z-10 backdrop-blur-sm">
+                        <tr>
+                          {Object.keys(resumenData[0] || {}).map((k) => (
+                            <th key={`vis-th-${k}`} className="px-4 py-3 whitespace-nowrap border-b border-black/20 font-bold">{k}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-black/10">
+                        {resumenData.map((row, i) => (
+                          <tr key={`vis-tr-${i}`} className="hover:bg-black/5 transition-colors duration-75 text-black">
+                            {Object.values(row).map((v: any, j) => (
+                              <td key={`vis-td-${i}-${j}`} className="px-4 py-2 whitespace-nowrap">{v}</td>
                             ))}
                           </tr>
-                        </thead>
-                        <tbody>
-                          {resumenData.map((row, i) => (
-                            <tr key={i} className="hover:bg-blue-50/80 transition-colors duration-150" style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-                               {Object.values(row).map((v: any, j, arr) => (
-                                 <td key={j} style={{
-                                   ...TD_STYLE,
-                                   border: '1px solid #cbd5e1',
-                                   borderTop: 'none',
-                                   borderRight: j === arr.length - 1 ? '1px solid #cbd5e1' : 'none',
-                                   padding: '10px 14px',
-                                   color: '#334155',
-                                   fontWeight: 600
-                                 }}>{v}</td>
-                               ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        ))}
+                      </tbody>
+                    </table>
+
                   </div>
                 )}
               </div>
