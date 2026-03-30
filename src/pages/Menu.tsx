@@ -121,6 +121,16 @@ const APPS: AppInfo[] = [
     tagColor: 'text-[#3fb950] bg-[#3fb950]/10 border-[#3fb950]/20',
     area: 'md:col-span-1 lg:col-span-1'
   },
+  {
+    id: 'control-despachos',
+    title: 'Control de Despachos',
+    description: 'Análisis de entregas vehiculares, estado de flota e ISOs sin conductor (quiebres).',
+    path: '/control-despachos',
+    icon: <Package className="h-5 w-5" />,
+    tag: 'Flota Unificada',
+    tagColor: 'text-[#f85149] bg-[#f85149]/10 border-[#f85149]/20',
+    area: 'md:col-span-2 lg:col-span-2'
+  },
 ]
 
 
