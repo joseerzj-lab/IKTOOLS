@@ -113,19 +113,19 @@ body {
 /* ── AR App Theme Variables (dark default) ──────────────────── */
 :root,
 .dark {
-  --ar-bg:           rgb(13,17,23);
-  --ar-bg-card:      rgba(22,27,34,0.85);
-  --ar-bg-card-alt:  rgba(16,20,26,0.9);
-  --ar-bg-hover:     rgba(255,255,255,0.04);
-  --ar-bg-active:    rgba(255,255,255,0.07);
-  --ar-bg-surface:   rgba(255,255,255,0.035);
-  --ar-bg-header:    rgba(13,17,23,0.9);
-  --ar-bg-detail:    rgba(0,0,0,0.25);
-  --ar-bg-sidebar:   rgba(22,27,34,0.85);
+  --ar-bg:           rgb(11,14,18);
+  --ar-bg-card:      rgba(17,21,27,0.72);
+  --ar-bg-card-alt:  rgba(22,27,34,0.75);
+  --ar-bg-hover:     rgba(139,148,158,0.12);
+  --ar-bg-active:    rgba(139,148,158,0.18);
+  --ar-bg-surface:   rgba(255,255,255,0.05);
+  --ar-bg-header:    rgba(11,14,18,0.85);
+  --ar-bg-detail:    rgba(0,0,0,0.5);
+  --ar-bg-sidebar:   rgba(17,21,27,0.82);
 
-  --ar-border:       rgba(255,255,255,0.07);
+  --ar-border:       rgba(255,255,255,0.08);
   --ar-border-soft:  rgba(255,255,255,0.04);
-  --ar-border-bar:   rgba(255,255,255,0.06);
+  --ar-border-bar:   rgba(255,255,255,0.12);
 
   --ar-text:         #e6edf3;
   --ar-text-sub:     #c9d1d9;
@@ -139,6 +139,7 @@ body {
   --ikea-blue:       #0058a3;
   --ikea-yellow:     #ffdb00;
   --ikea-dark:       #111111;
+  --premium-purple:  #b19cd9;
 }
 
 .light {
@@ -167,53 +168,18 @@ body {
 }
 
 .crimson {
-  --ar-bg: #0a0000;
-  --ar-bg-card: rgba(26, 0, 0, 0.85);
-  --ar-bg-card-alt: rgba(40, 0, 0, 0.9);
-  --ar-bg-hover: rgba(255, 0, 0, 0.1);
-  --ar-bg-active: rgba(255, 0, 0, 0.2);
-  --ar-bg-surface: rgba(255, 0, 0, 0.05);
-  --ar-bg-header: rgba(15, 0, 0, 0.98);
-  --ar-bg-detail: rgba(30, 0, 0, 0.4);
-  --ar-bg-sidebar: rgba(26, 0, 0, 0.85);
-
-  --ar-border: rgba(255, 0, 0, 0.3);
-  --ar-border-soft: rgba(255, 0, 0, 0.15);
-  --ar-border-bar: rgba(255, 0, 0, 0.2);
-
-  --ar-text: #ffffff;
-  --ar-text-sub: #ff4d4d;
-  --ar-text-muted: #ff1a1a;
-  --ar-text-faint: rgba(255, 255, 255, 0.7);
-  --ar-text-disabled: rgba(255, 255, 255, 0.4);
-
-  --ar-progress-bg: rgba(255, 0, 0, 0.1);
-  --ar-scrollbar: rgba(255, 0, 0, 0.3) transparent;
+  --ar-bg: #09090b;
+  --ar-bg-card: rgba(24, 24, 27, 0.98);
+  --ar-bg-card-alt: rgba(39, 39, 42, 0.98);
+  --ar-border: rgba(239, 68, 68, 0.3);
+  --ar-text-sub: #f87171;
 }
 
 .landscape {
-  --ar-bg:           transparent;
-  --ar-bg-card:      rgba(255, 255, 255, 0.12);
-  --ar-bg-card-alt:  rgba(255, 255, 255, 0.08);
-  --ar-bg-hover:     rgba(255, 255, 255, 0.15);
-  --ar-bg-active:    rgba(255, 255, 255, 0.2);
-  --ar-bg-surface:   rgba(255, 255, 255, 0.05);
-  --ar-bg-header:    rgba(0, 0, 0, 0.25);
-  --ar-bg-detail:    rgba(0, 0, 0, 0.3);
-  --ar-bg-sidebar:   rgba(255, 255, 255, 0.1);
-
-  --ar-border:       rgba(255, 255, 255, 0.25);
-  --ar-border-soft:  rgba(255, 255, 255, 0.15);
-  --ar-border-bar:   rgba(255, 255, 255, 0.2);
-
-  --ar-text:         #ffffff;
-  --ar-text-sub:     rgba(255, 255, 255, 0.9);
-  --ar-text-muted:   rgba(255, 255, 255, 0.7);
-  --ar-text-faint:   rgba(255, 255, 255, 0.5);
-  --ar-text-disabled:rgba(255, 255, 255, 0.3);
-
-  --ar-progress-bg:  rgba(255, 255, 255, 0.1);
-  --ar-scrollbar:    rgba(255, 255, 255, 0.2) transparent;
+  --ar-bg: #030712;
+  --ar-bg-sidebar: rgba(3, 7, 18, 0.85);
+  --ar-bg-card: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(12px);
 }
 
 /* Apply scrollbar colors based on theme */

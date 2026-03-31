@@ -180,22 +180,19 @@ export default function Menu() {
       <div
         className="pointer-events-none fixed inset-0 z-0 transition-opacity duration-500"
         style={{
-          background: theme === 'landscape'
-            ? 'radial-gradient(ellipse 60% 40% at 50% -10%, rgba(255,255,255,0.15) 0%, transparent 70%)'
-            : isDark 
-              ? 'radial-gradient(ellipse 60% 40% at 50% -10%, rgba(56,139,253,0.12) 0%, transparent 70%)'
-              : 'radial-gradient(ellipse 60% 40% at 50% -10%, rgba(56,139,253,0.06) 0%, transparent 70%)',
+          background: `radial-gradient(ellipse 60% 50% at 50% -10%, ${isDark ? 'rgba(177,156,217,0.15)' : 'rgba(0,81,186,0.08)'} 0%, transparent 80%)`,
         }}
       />
 
       {/* Header bar */}
       <div style={{
         background: TC.headerBg,
-        borderBottom: `1px solid ${TC.border}`,
         userSelect: 'none',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        position: 'sticky', top: 0, zIndex: 50
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        position: 'sticky', top: 0, zIndex: 100,
+        boxShadow: '0 4px 30px rgba(0,0,0,0.5)',
+        borderBottom: `1px solid ${isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'}`
       }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
@@ -293,7 +290,7 @@ export default function Menu() {
             icon: app.icon,
             // You can add lastUpdated here if you have that data
           }))}
-          isGlass={theme === 'landscape'}
+          isGlass={true}
           className="grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
         />
 

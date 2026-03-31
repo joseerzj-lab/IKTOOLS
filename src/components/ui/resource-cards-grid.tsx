@@ -56,10 +56,10 @@ export const ResourceCardsGrid = ({ items, className, isGlass }: ResourceCardsGr
         const isExternal = item.href.startsWith("http");
         
         const cardClasses = cn(
-          "flex h-full flex-col justify-between rounded-lg border p-6 shadow-sm transition-all duration-300 hover:shadow-md group",
+          "flex h-full flex-col justify-between rounded-xl border p-6 transition-all duration-500 group",
           isGlass 
-            ? "bg-white/10 dark:bg-black/30 backdrop-blur-xl border-white/20 dark:border-white/10 hover:bg-white/20 dark:hover:bg-black/40" 
-            : "border-border bg-card",
+            ? "bg-slate-900/40 backdrop-blur-xl border-white/10 hover:border-white/30 hover:bg-slate-800/50 hover:shadow-[0_0_30px_rgba(56,139,253,0.15)]" 
+            : "border-border bg-card hover:bg-muted/50 shadow-sm hover:shadow-md",
         );
 
         const content = (

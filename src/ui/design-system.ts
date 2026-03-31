@@ -45,11 +45,12 @@ export const C = {
   orangeBorder:'rgba(240,136,62,0.35)',
 
   red:         '#ff7b72',
-  redBg:       'rgba(248,81,73,0.14)',
-  redBorder:   'rgba(248,81,73,0.35)',
+  redBg:       'rgba(248,81,73,0.12)',
+  redBorder:   'rgba(248,81,73,0.25)',
 
-  purple:      '#a78bfa',
-  purpleBg:    'rgba(167,139,250,0.12)',
+  purple:      '#b19cd9',     /* Updated to Premium Lilac */
+  purpleBg:    'rgba(177,156,217,0.12)',
+  purpleBorder:'rgba(177,156,217,0.25)',
 
   teal:        '#2dd4bf',
   tealBg:      'rgba(45,212,191,0.1)',
@@ -144,6 +145,7 @@ export function cardStyle(extra?: React.CSSProperties): React.CSSProperties {
     background: C.bgCard,
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.45)',
     overflow: 'hidden',
     ...extra,
   }
@@ -190,10 +192,10 @@ export const BTN = {
     background: 'linear-gradient(135deg,#0051BA,#1a6dd4)',
     color: '#fff',
     border: `1px solid rgba(56,139,253,0.4)`,
-    boxShadow: SH.btn,
+    boxShadow: '0 4px 12px rgba(0,81,186,0.3)',
   },
   secondary: {
-    background: C.bgHover,
+    background: 'rgba(255,255,255,0.03)',
     color: C.textSub,
     border: `1px solid ${C.border}`,
   },

@@ -413,8 +413,8 @@ export default function TabLoad({
   return (
     <div className="flex-1 h-full overflow-y-scroll custom-scrollbar p-6 lg:p-10 relative" style={{ 
       background: TC.bg,
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
+      backdropFilter: 'blur(24px)',
+      WebkitBackdropFilter: 'blur(24px)',
       scrollbarWidth: 'thin',
       scrollbarColor: 'rgba(255,255,255,0.18) transparent',
     }}>
@@ -434,7 +434,7 @@ export default function TabLoad({
             <div 
               key={m.id} 
               className="cursor-pointer transition-all hover:-translate-y-1 group rounded-2xl"
-              style={{ padding: 24, boxShadow: `0 4px 20px rgba(0,0,0,0.05)`, background: TC.bgCard, border: `1px solid ${TC.borderSoft}`, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
+              style={{ padding: 24, boxShadow: `0 4px 20px rgba(0,0,0,0.05)`, background: TC.bgCard, border: `1px solid ${TC.borderSoft}`, backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}
               onClick={() => setActiveModal(m.id)}
             >
               <div className="flex flex-col h-full gap-4">
@@ -467,7 +467,7 @@ export default function TabLoad({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="absolute inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
-            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
             onClick={() => setActiveModal(null)}
           >
             <motion.div 
