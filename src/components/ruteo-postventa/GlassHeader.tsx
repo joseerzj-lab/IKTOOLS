@@ -77,8 +77,8 @@ export default function GlassHeader({ activeTab, onTabChange, badges, severities
       borderBottom: `1px solid ${TC.border}`,
       flexShrink: 0,
       userSelect: 'none',
-      backdropFilter: 'blur(20px)',
-      WebkitBackdropFilter: 'blur(20px)',
+      backdropFilter: 'blur(24px)',
+      WebkitBackdropFilter: 'blur(24px)',
     }}>
       {/* ── Brand row ── */}
       <div style={{

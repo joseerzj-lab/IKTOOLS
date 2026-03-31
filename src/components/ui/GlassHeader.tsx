@@ -28,7 +28,7 @@ const BADGE: Record<string, { bg: string; color: string }> = {
   orange: { bg: 'rgba(240,136,62,0.18)',  color: C.orange },
   red:    { bg: 'rgba(248,81,73,0.18)',   color: C.red    },
   green:  { bg: 'rgba(63,185,80,0.18)',   color: C.green  },
-  purple: { bg: 'rgba(167,139,250,0.18)', color: C.purple },
+  purple: { bg: 'rgba(177,156,217,0.22)', color: C.purple },
 }
 
 export default function GlassHeader({ 
@@ -68,15 +68,16 @@ export default function GlassHeader({
 
   // Severity → pill visual
   const SEVERITY_PILL: Record<string, { bg: string; border: string; glow: string }> = {
-    high:   { bg: 'rgba(248,81,73,0.22)',    border: 'rgba(248,81,73,0.5)',    glow: '0 0 16px rgba(248,81,73,0.3)' },
-    medium: { bg: 'rgba(240,136,62,0.22)',   border: 'rgba(240,136,62,0.5)',   glow: '0 0 16px rgba(240,136,62,0.25)' },
-    none:   { bg: 'rgba(0,81,186,0.22)',     border: 'rgba(0,81,186,0.45)',    glow: '0 0 14px rgba(0,81,186,0.28)' },
+    high:   { bg: 'rgba(248,81,73,0.18)',    border: 'rgba(248,81,73,0.4)',    glow: '0 0 16px rgba(248,81,73,0.25)' },
+    medium: { bg: 'rgba(240,136,62,0.18)',   border: 'rgba(240,136,62,0.4)',   glow: '0 0 16px rgba(240,136,62,0.2)' },
+    none:   { bg: 'rgba(177,156,217,0.15)',  border: 'rgba(177,156,217,0.3)',  glow: '0 0 14px rgba(177,156,217,0.2)' },
   }
 
   return (
     <div style={{
-      background: TC.headerBg,
+      background: `linear-gradient(to bottom, rgba(255,255,255,0.03), transparent), ${TC.headerBg}`,
       borderBottom: `1px solid ${TC.border}`,
+      borderTop: `1px solid rgba(255,255,255,0.05)`,
       flexShrink: 0,
       userSelect: 'none',
       backdropFilter: 'blur(20px)',
@@ -210,11 +211,11 @@ export default function GlassHeader({
                     background: 'transparent',
                     color: isActive ? TC.text : TC.textFaint,
                     fontSize: T.base,
-                    fontWeight: isActive ? 600 : 400,
+                    fontWeight: isActive ? 700 : 500,
                     fontFamily: T.fontFamily,
                     whiteSpace: 'nowrap',
                     outline: 'none',
-                    transition: 'color 0.15s',
+                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}
                 >
                   {/* Active pill — slides between tabs, colored by severity */}
@@ -244,12 +245,15 @@ export default function GlassHeader({
                   </AnimatePresence>
 
                   {/* Icon */}
-                  <span style={{ position: 'relative', zIndex: 1, fontSize: 13, lineHeight: 1, display: 'flex', alignItems: 'center' }}>
+                  <motion.span 
+                    animate={{ scale: isActive ? 1.1 : 1, rotate: isActive ? [0, -5, 5, 0] : 0 }}
+                    style={{ position: 'relative', zIndex: 1, fontSize: 13, lineHeight: 1, display: 'flex', alignItems: 'center' }}
+                  >
                     {tab.icon}
-                  </span>
+                  </motion.span>
 
                   {/* Label */}
-                  <span style={{ position: 'relative', zIndex: 1 }}>
+                  <span style={{ position: 'relative', zIndex: 1, letterSpacing: isActive ? '0.02em' : 'normal' }}>
                     {tab.label}
                   </span>
 

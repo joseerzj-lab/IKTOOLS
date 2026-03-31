@@ -28,16 +28,22 @@ interface Props {
 
 type StatusFilter = 'all' | 'pendiente' | 'alerta' | 'revisado'
 
-const glass = {
-  row: {
-    background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.005) 100%)',
-    borderTop: '1px solid rgba(255,255,255,0.1)',
-    borderLeft: '1px solid rgba(255,255,255,0.1)',
-    borderRight: '1px solid rgba(255,255,255,0.02)',
-    borderBottom: '1px solid rgba(255,255,255,0.02)',
-    backdropFilter: 'blur(24px)',
-  } as React.CSSProperties,
-}
+// Base styles for project rows - focused on performance
+const rowStyle = (isF: boolean, isRes: boolean, isFlg: boolean): React.CSSProperties => ({
+  padding: '14px',
+  borderRadius: R.xl,
+  marginBottom: 8,
+  cursor: 'pointer',
+  background: isF ? 'rgba(177,156,217,0.12)' : (isFlg ? 'rgba(248,81,73,0.08)' : 'rgba(255,255,255,0.02)'),
+  border: `1px solid ${isF ? '#b19cd9' : (isFlg ? C.red : 'rgba(255,255,255,0.06)')}`,
+  borderLeft: `4px solid ${isF ? '#b19cd9' : (isRes ? C.green : (isFlg ? C.red : 'rgba(255,255,255,0.1)'))}`,
+  opacity: isRes ? 0.6 : 1,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  transition: 'all 0.2s ease',
+  boxShadow: isF ? '0 8px 24px rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.15)',
+})
 
 export default function TabProyectos({
   routeData, resolvedProyectos, flaggedProyectos,
@@ -264,7 +270,7 @@ export default function TabProyectos({
 
   return (
     <div style={{ display:'grid', gridTemplateColumns:'380px 1fr', height:'100%', overflow:'hidden', background: C.bg }}>
-      <div style={{ borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', background:'var(--ar-bg-sidebar)', backdropFilter:'blur(20px)' }}>
+      <div style={{ borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column', background:'var(--ar-bg-sidebar)', backdropFilter:'blur(24px)', WebkitBackdropFilter:'blur(24px)' }}>
         <div style={{ padding:'16px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10, background:'var(--ar-bg-header)' }}>
           <div style={{ flex:1 }}><span style={{ fontSize:22, fontWeight:950, color:'#b19cd9', letterSpacing:'-0.02em' }}>{routeData.length}</span> <span style={{ fontSize:10, fontWeight:800, color:C.textMuted, textTransform:'uppercase' }}>Proyectos</span></div>
           <div style={{ display:'flex', gap:6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -323,22 +329,7 @@ export default function TabProyectos({
                   zoomOnFocusRef.current = true
                   setFocusedIso(c.iso === focusedIso ? null : c.iso)
                 }} 
-                style={{ 
-                  padding:'14px', 
-                  borderRadius: R.xl,
-                  marginBottom: 8,
-                  cursor:'pointer', 
-                  ...glass.row,
-                  background: isF ? 'rgba(56,139,253,0.12)' : (isFlg ? 'rgba(248,81,73,0.08)' : 'rgba(255,255,255,0.02)'), 
-                  border: `1px solid ${isF ? C.blue : (isFlg ? C.red : 'rgba(255,255,255,0.06)')}`, 
-                  borderLeft: `4px solid ${isF ? C.blue : (isRes ? C.green : (isFlg ? C.red : 'rgba(255,255,255,0.1)'))}`,
-                  opacity: isRes ? 0.5 : 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                  transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                  boxShadow: isF ? `0 8px 20px rgba(56,139,253,0.15)` : '0 2px 8px rgba(0,0,0,0.2)'
-                }}
+                style={rowStyle(isF, isRes, isFlg)}
               >
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -448,9 +439,10 @@ export default function TabProyectos({
                initial={{ opacity:0, y:20 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0, y:20 }}
                style={{ 
                   position:'absolute', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:1000,
-                  background:'rgba(22,27,33,0.9)', backdropFilter:'blur(12px)', border:'1px solid rgba(255,255,255,0.1)',
+                   background:'rgba(17,21,27,0.75)', border:'1px solid rgba(255,255,255,0.12)',
                   padding:'10px 20px', borderRadius:R.xl, display:'flex', alignItems:'center', gap:12,
-                  boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                  backdropFilter:'blur(24px)', WebkitBackdropFilter:'blur(24px)',
+                  boxShadow: '0 10px 32px rgba(0,0,0,0.6)'
                }}>
                 <div style={{ width:12, height:12, borderRadius:'50%', background: vehColors[routeData.find(c=>c.iso===focusedIso)?.veh || ''] || C.blue }}></div>
                 <div style={{ display:'flex', flexDirection:'column' }}>

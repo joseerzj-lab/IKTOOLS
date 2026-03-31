@@ -44,12 +44,11 @@ export function Btn({ children, variant = 'secondary', size = 'md', disabled, on
       onMouseUp={() => setActive(false)}
       onMouseLeave={() => setActive(false)}
       style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-        fontFamily: T.fontFamily, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.45 : 1,
-        transition: 'filter 0.12s, transform 0.08s',
-        transform: active && !disabled ? 'scale(0.95)' : 'scale(1)',
-        filter: !active && !disabled ? undefined : undefined,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        fontFamily: T.fontFamily, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
+        transition: 'all 0.1s cubic-bezier(0.4, 0, 0.2, 1)',
+        transform: active && !disabled ? 'scale(0.96)' : 'scale(1)',
         whiteSpace: 'nowrap',
         ...BTN[variant],
         ...BTN_SIZE[size],
@@ -145,8 +144,27 @@ export function Accordion({ header, children, defaultOpen = false, indent = 0, b
 // ─────────────────────────────────────────────────────────────
 //  Card — surface container
 // ─────────────────────────────────────────────────────────────
-export function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return <div style={cardStyle(style)}>{children}</div>
+// ─────────────────────────────────────────────────────────────
+//  Card — surface container
+// ─────────────────────────────────────────────────────────────
+interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
+  children: React.ReactNode
+}
+
+export function Card({ children, style, className, onClick, ...props }: CardProps) {
+  return (
+    <div 
+      className={className} 
+      onClick={onClick}
+      {...props}
+      style={{
+        ...cardStyle(style),
+        cursor: onClick ? 'pointer' : style?.cursor
+      }}
+    >
+      {children}
+    </div>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────

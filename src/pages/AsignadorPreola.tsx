@@ -1,8 +1,8 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { useTheme, getThemeColors } from '../context/ThemeContext';
-import { PageShell } from '../ui/DS';
 import GlassHeader, { GlassHeaderTab } from '../components/ui/GlassHeader';
+import { PageShell, Card, Btn, T, C } from '../ui/DS';
 
 // ─────────────────────────────────────────────────────────
 //  PARÁMETROS POR DEFECTO (basados en lineales_config SQL)
@@ -35,9 +35,70 @@ const DEFAULT_PARAMS: Record<string, any> = {
 };
 
 // ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+//  ALGORITMO Y HELPERS DE DISTRIBUCIÓN
+// ─────────────────────────────────────────────────────────
+function getDistributionItems(totalItems: number, N: number, maxPos: number, asignacion: string, overflow: string) {
+  let arr = new Array(N).fill(0);
+  if (totalItems <= maxPos * N) {
+    if (asignacion === "balanceado") {
+      let base = Math.floor(totalItems / N);
+      let rem = totalItems % N;
+      for (let i = 0; i < N; i++) arr[i] = base + (i < rem ? 1 : 0);
+    } else {
+      let left = totalItems;
+      for (let i = 0; i < N; i++) {
+        let take = Math.min(left, maxPos);
+        arr[i] = take;
+        left -= take;
+      }
+    }
+  } else {
+    let excess = totalItems - (maxPos * N);
+    if (overflow === "balanceado") {
+      let baseExc = Math.floor(excess / N);
+      let rem = excess % N;
+      for (let i = 0; i < N; i++) arr[i] = maxPos + baseExc + (i < rem ? 1 : 0);
+    } else {
+      for (let i = 0; i < N; i++) arr[i] = maxPos;
+      arr[N - 1] += excess;
+    }
+  }
+  return arr;
+}
+
+function getDistributionVol(totalVol: number, N: number, maxVol: number, asignacion: string, overflow: string) {
+  let arr = new Array(N).fill(0);
+  if (totalVol <= maxVol * N) {
+    if (asignacion === "balanceado") {
+      let base = totalVol / N;
+      for (let i = 0; i < N; i++) arr[i] = base;
+    } else {
+      let left = totalVol;
+      for (let i = 0; i < N; i++) {
+        let take = Math.min(left, maxVol);
+        arr[i] = take;
+        left -= take;
+      }
+    }
+  } else {
+    let excess = totalVol - (maxVol * N);
+    if (overflow === "balanceado") {
+      let baseExc = excess / N;
+      for (let i = 0; i < N; i++) arr[i] = maxVol + baseExc;
+    } else {
+      for (let i = 0; i < N; i++) arr[i] = maxVol;
+      arr[N - 1] += excess;
+    }
+  }
+  return arr;
+}
+
+// ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
 //  ALGORITMO DE ASIGNACIÓN
 // ─────────────────────────────────────────────────────────
-function runAssignment(rows: any[], params: any) {
+function runAssignment(rows: any[], params: any, globalAsignacion: string, globalOverflow: string) {
   // Agrupar por FACILITY
   const byFacility: Record<string, any[]> = {};
   rows.forEach((row) => {
@@ -51,14 +112,13 @@ function runAssignment(rows: any[], params: any) {
   const summaryData: any[] = [];
 
   Object.entries(byFacility).forEach(([fac, orders]) => {
-    const p = params[fac] || DEFAULT_PARAMS[fac] || {
-      maxPos: 60,
-      maxVol: 6,
-      lineales: [`${fac}1`, `${fac}2`],
-    };
-    const lineales = p.lineales.length > 0 ? p.lineales : [`${fac}1`];
+    const p = params[fac] || DEFAULT_PARAMS[fac] || {};
+    const lineales = p.lineales && p.lineales.length > 0 ? p.lineales : [`${fac}1`];
     const maxPos = Number(p.maxPos) || 60;
     const maxVol = Number(p.maxVol) || 6;
+    const asignacion = globalAsignacion;
+    const overflowParam = globalOverflow;
+    const N = lineales.length;
 
     // Ordenar: ROUTE_TO ASC, ID_ORDEN ASC
     const sorted = [...orders].sort((a, b) => {
@@ -71,6 +131,20 @@ function runAssignment(rows: any[], params: any) {
       return idA < idB ? -1 : idA > idB ? 1 : 0;
     });
 
+    const totalItems = sorted.length;
+    const totalVol = sorted.reduce((sum, o) => sum + (parseFloat(o.VOLUMEN_M3 ?? o.volumen_m3 ?? 0) || 0), 0);
+
+    const distPos = getDistributionItems(totalItems, N, maxPos, asignacion, overflowParam);
+    const distVol = getDistributionVol(totalVol, N, maxVol, asignacion, overflowParam);
+
+    const threshPos: number[] = [];
+    let curP = 0;
+    for(let i=0; i<N; i++) { curP += distPos[i]; threshPos.push(curP); }
+
+    const threshVol: number[] = [];
+    let curV = 0;
+    for(let i=0; i<N; i++) { curV += distVol[i]; threshVol.push(curV); }
+
     const linealStats: Record<string, any> = {};
     lineales.forEach((l: string) => { linealStats[l] = { count: 0, vol: 0, overflow: false }; });
 
@@ -80,12 +154,19 @@ function runAssignment(rows: any[], params: any) {
       const vol = parseFloat(order.VOLUMEN_M3 ?? order.volumen_m3 ?? 0) || 0;
       cumVol += vol;
 
-      const byPosNum = maxPos > 0 ? Math.ceil(pos / maxPos) : 1;
-      const byVolNum = maxVol > 0 && cumVol > 0 ? Math.ceil(cumVol / maxVol) : 1;
-      let linealNum = Math.max(byPosNum, byVolNum); // 1-based
+      let posIdx = 0;
+      while (posIdx < N - 1 && pos > threshPos[posIdx]) posIdx++;
 
-      const overflow = linealNum > lineales.length;
-      if (linealNum > lineales.length) linealNum = lineales.length;
+      let volIdx = 0;
+      while (volIdx < N - 1 && cumVol > threshVol[volIdx] + 0.0001) volIdx++;
+
+      let linealNum = Math.max(posIdx, volIdx) + 1; 
+
+      const unboundedPosNum = maxPos > 0 ? Math.ceil(pos / maxPos) : 1;
+      const unboundedVolNum = maxVol > 0 && cumVol > 0 ? Math.ceil(cumVol / maxVol) : 1;
+      const isOverflowFlag = Math.max(unboundedPosNum, unboundedVolNum) > N;
+
+      if (linealNum > N) linealNum = N;
       if (linealNum < 1) linealNum = 1;
 
       const linealName = lineales[linealNum - 1];
@@ -93,7 +174,7 @@ function runAssignment(rows: any[], params: any) {
       assignmentMap[orderId] = linealName;
       linealStats[linealName].count++;
       linealStats[linealName].vol += vol;
-      if (overflow) linealStats[linealName].overflow = true;
+      if (isOverflowFlag) linealStats[linealName].overflow = true;
     });
 
     lineales.forEach((l: string) => {
@@ -123,9 +204,10 @@ function deepClone(obj: any) {
 }
 
 function defaultForFac(fac: string) {
-  return DEFAULT_PARAMS[fac]
+  const def = DEFAULT_PARAMS[fac]
     ? deepClone(DEFAULT_PARAMS[fac])
     : { maxPos: 60, maxVol: 6, lineales: [`${fac}1`, `${fac}2`] };
+  return def;
 }
 
 const HEADER_TABS: GlassHeaderTab[] = [
@@ -143,11 +225,23 @@ export default function AsignadorPreola() {
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<any[]>([]);
   const [colHeaders, setColHeaders] = useState<string[]>([]);
-  const [params, setParams] = useState<any>(deepClone(DEFAULT_PARAMS));
+  const [params, setParams] = useState<any>(() => {
+    try {
+      const c = localStorage.getItem("preola_params_v3");
+      return c ? JSON.parse(c) : deepClone(DEFAULT_PARAMS);
+    } catch { return deepClone(DEFAULT_PARAMS); }
+  });
   const [results, setResults] = useState<any>(null);
   const [dragging, setDragging] = useState(false);
   const [expandedFacs, setExpandedFacs] = useState<Record<string, boolean>>({});
-  const [activeTab, setActiveTab] = useState("params");
+  const [activeTab, setActiveTab] = useState<"params" | "results">("params");
+
+  const [globalAsignacion, setGlobalAsignacion] = useState(() => localStorage.getItem("preola_asig") || "optimizado");
+  const [globalOverflow, setGlobalOverflow] = useState(() => localStorage.getItem("preola_over") || "optimizado");
+
+  useEffect(() => { localStorage.setItem("preola_params_v3", JSON.stringify(params)); }, [params]);
+  useEffect(() => { localStorage.setItem("preola_asig", globalAsignacion); }, [globalAsignacion]);
+  useEffect(() => { localStorage.setItem("preola_over", globalOverflow); }, [globalOverflow]);
 
   // Facilities presentes en el archivo cargado
   const detectedFacilities = useMemo(() => {
@@ -205,7 +299,7 @@ export default function AsignadorPreola() {
 
   // ── Ejecución ────────────────────────────────────────────
   const handleRun = () => {
-    const result = runAssignment(rows, effectiveParams);
+    const result = runAssignment(rows, effectiveParams, globalAsignacion, globalOverflow);
     setResults(result);
     setActiveTab("results");
   };
@@ -293,7 +387,14 @@ export default function AsignadorPreola() {
         icon="📦"
         tabs={HEADER_TABS}
         activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id)}
+        onTabChange={(id: string) => setActiveTab(id as "params" | "results")}
+        badges={{
+          params: detectedFacilities.length || 0,
+          results: (results && results.summaryData) ? results.summaryData.filter((r: any) => r.isos > 0).length : 0
+        }}
+        severities={{
+          results: (results && results.summaryData.some((r:any) => r.overflow)) ? 'high' : 'none'
+        }}
       />
 
       <div className="flex-1 overflow-hidden" style={{ background: TC.bg }}>
@@ -315,16 +416,18 @@ export default function AsignadorPreola() {
             {/* ── COLUMNA IZQUIERDA ── */}
             <div className="xl:col-span-1 space-y-4">
               {/* Upload */}
-              <div
-                className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${
-                  dragging
-                    ? "border-yellow-400 bg-yellow-400/5"
-                    : "border-gray-700 hover:border-gray-500 bg-gray-900"
-                }`}
-                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              {/* Upload Card */}
+              <Card 
+                onClick={() => document.getElementById("preola-file-input")?.click()}
+                style={{ 
+                  padding: '24px', textAlign: 'center', cursor: 'pointer',
+                  border: dragging ? `2px dashed ${C.blue}` : `1px dashed ${C.border}`,
+                  background: dragging ? 'rgba(56,139,253,0.05)' : undefined,
+                  transition: 'all 0.2s'
+                }}
+                onDragOver={(e:any) => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={handleDrop}
-                onClick={() => document.getElementById("preola-file-input")?.click()}
               >
                 <input
                   id="preola-file-input"
@@ -333,49 +436,57 @@ export default function AsignadorPreola() {
                   className="hidden"
                   onChange={(e) => e.target.files?.[0] && parseFile(e.target.files[0])}
                 />
-                <div className="text-2xl mb-2">
+                <div style={{ fontSize: '32px', marginBottom: '12px' }}>
                   {file ? "✅" : "📂"}
                 </div>
                 {file ? (
                   <div>
-                    <p className="text-green-400 text-xs font-bold truncate">{file.name}</p>
-                    <p className="text-gray-500 text-xs mt-1">
+                    <p style={{ color: C.green, fontSize: T.xs, fontWeight: 900, wordBreak: 'break-all' }}>{file.name}</p>
+                    <p style={{ color: C.textMuted, fontSize: '10px', marginTop: '4px', textTransform: 'uppercase' }}>
                       {detectedFacilities.length} facilities detectados
                     </p>
                   </div>
                 ) : (
                   <div>
-                    <p className="text-gray-300 text-sm font-semibold">Subir PREOLA</p>
-                    <p className="text-gray-500 text-xs mt-1">Arrastra o haz clic · .xlsx</p>
+                    <p style={{ color: C.text, fontSize: T.base, fontWeight: 800 }}>Subir PREOLA</p>
+                    <p style={{ color: C.textFaint, fontSize: '11px', marginTop: '4px' }}>Arrastra o haz clic · .xlsx</p>
                   </div>
                 )}
-              </div>
+              </Card>
 
               {/* Run */}
               {rows.length > 0 && (
-                <button
+                <Btn
+                  variant="primary"
                   onClick={handleRun}
-                  className="w-full py-3 bg-yellow-400 text-gray-900 font-bold rounded-xl hover:bg-yellow-300 transition-colors text-sm tracking-wide shadow-lg shadow-yellow-400/10"
+                  style={{ 
+                    width: '100%', padding: '14px', fontSize: '14px', fontWeight: 900,
+                    background: 'linear-gradient(135deg, #ffda1a, #e6c200)',
+                    color: '#000',
+                    boxShadow: '0 8px 24px rgba(255, 218, 26, 0.2)'
+                  }}
                 >
                   ▶ EJECUTAR ASIGNACIÓN
-                </button>
+                </Btn>
               )}
 
               {/* Downloads */}
               {results && (
                 <div className="space-y-2">
-                  <button
+                  <Btn
+                    variant="ghost"
                     onClick={handleDownloadPreola}
-                    className="w-full py-2.5 bg-green-600/20 border border-green-600/40 text-green-400 font-semibold rounded-lg hover:bg-green-600/30 transition-colors text-xs tracking-wide"
+                    style={{ width: '100%', borderColor: C.green, color: C.green, fontSize: '12px', fontWeight: 'bold' }}
                   >
                     ⬇ PREOLA_ASIGNADO.xlsx
-                  </button>
-                  <button
+                  </Btn>
+                  <Btn
+                    variant="ghost"
                     onClick={handleDownloadAsignacion}
-                    className="w-full py-2.5 bg-gray-800 border border-gray-700 text-gray-300 font-semibold rounded-lg hover:bg-gray-700 transition-colors text-xs tracking-wide"
+                    style={{ width: '100%', fontSize: '12px', fontWeight: 'bold' }}
                   >
                     ⬇ preola.xlsx (sin headers)
-                  </button>
+                  </Btn>
                 </div>
               )}
 
@@ -400,16 +511,43 @@ export default function AsignadorPreola() {
 
               {/* ── TAB PARÁMETROS ── */}
               {activeTab === "params" && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-                    <span className="text-xs text-gray-400 tracking-widest uppercase">
-                      {facilityList.length} facilities configurados
-                    </span>
-                    <span className="text-xs text-gray-600">
-                      Click en un facility para editar
-                    </span>
-                  </div>
-                  <div className="divide-y divide-gray-800 max-h-[520px] overflow-y-auto custom-scrollbar">
+                <>
+                  <Card style={{ marginBottom: '16px', padding: '16px' }}>
+                    <div style={{ color: TC.textFaint, fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px', fontWeight: 'bold' }}>
+                      Estrategia Global de Asignación
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <ParamSelect 
+                        label="Asignación Regular"
+                        value={globalAsignacion}
+                        options={[
+                          { value: "optimizado", label: "Optimizado" },
+                          { value: "balanceado", label: "Balanceado" }
+                        ]}
+                        onChange={(v: string) => setGlobalAsignacion(v)}
+                      />
+                      <ParamSelect 
+                        label="Caso Overflow"
+                        value={globalOverflow}
+                        options={[
+                          { value: "optimizado", label: "Optimizado" },
+                          { value: "balanceado", label: "Balancear" }
+                        ]}
+                        onChange={(v: string) => setGlobalOverflow(v)}
+                      />
+                    </div>
+                  </Card>
+
+                  <Card style={{ padding: 0, overflow: 'hidden' }}>
+                    <div style={{ padding: '12px 16px', borderBottom: `1px solid ${TC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '12px', color: TC.textMuted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                        {facilityList.length} facilities configurados
+                      </span>
+                      <span style={{ fontSize: '12px', color: TC.textFaint }}>
+                        Click en un facility para editar
+                      </span>
+                    </div>
+                    <div className="divide-y max-h-[520px] overflow-y-auto custom-scrollbar" style={{ borderColor: TC.border }}>
                     {facilityList.map((fac) => {
                       const p = effectiveParams[fac] || defaultForFac(fac);
                       const isOpen = expandedFacs[fac];
@@ -419,34 +557,37 @@ export default function AsignadorPreola() {
                           {/* Row header */}
                           <button
                             onClick={() => toggleFac(fac)}
-                            className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-800/60 transition-colors group"
+                            style={{ width: '100%', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'background 0.2s', borderBottom: `1px solid ${TC.border}` }}
+                            onMouseOver={(e) => e.currentTarget.style.background = TC.bgHover}
+                            onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
                           >
                             <div className="flex items-center gap-3">
                               <span
-                                className={`font-mono font-bold text-sm ${
-                                  isDetected ? "text-yellow-400" : "text-gray-500"
-                                }`}
+                                style={{
+                                  fontFamily: 'monospace', fontWeight: 'bold', fontSize: '14px',
+                                  color: isDetected ? C.orange : TC.textMuted
+                                }}
                               >
                                 {fac}
                               </span>
                               {isDetected && (
-                                <span className="text-[10px] bg-yellow-400/10 text-yellow-400 border border-yellow-400/20 px-1.5 py-0.5 rounded">
+                                <span style={{ fontSize: '10px', background: `${C.orange}20`, color: C.orange, border: `1px solid ${C.orange}40`, padding: '2px 6px', borderRadius: '4px' }}>
                                   EN ARCHIVO
                                 </span>
                               )}
-                              <span className="text-xs text-gray-500">
+                              <span style={{ fontSize: '12px', color: TC.textFaint }}>
                                 {p.lineales.length} lineal{p.lineales.length !== 1 ? "es" : ""} ·{" "}
                                 Max {p.maxPos} ISO · Max {p.maxVol} m³
                               </span>
                             </div>
-                            <span className="text-gray-600 text-xs group-hover:text-gray-400">
+                            <span style={{ color: TC.textFaint, fontSize: '12px' }}>
                               {isOpen ? "▲" : "▼"}
                             </span>
                           </button>
 
                           {/* Expanded edit panel */}
                           {isOpen && (
-                            <div className="px-4 pb-4 bg-gray-950/50 border-t border-gray-800">
+                            <div style={{ padding: '0 16px 16px 16px', background: TC.bgCardAlt, borderBottom: `1px solid ${TC.border}` }}>
                               <div className="grid grid-cols-2 gap-3 mt-3">
                                 <ParamInput
                                   label="Max ISOs por lineal"
@@ -465,39 +606,24 @@ export default function AsignadorPreola() {
 
                               {/* Lineales */}
                               <div className="mt-3">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="text-xs text-gray-500 tracking-widest uppercase">
+                                <div className="flex items-center justify-between mb-2 mt-4">
+                                  <span style={{ fontSize: '10px', color: TC.textFaint, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                                     Lineales ({p.lineales.length})
                                   </span>
                                   <div className="flex gap-1.5">
-                                    <button
-                                      onClick={() => addLineal(fac)}
-                                      className="text-[11px] bg-blue-500/10 border border-blue-500/30 text-blue-400 px-2 py-1 rounded hover:bg-blue-500/20 transition-colors"
-                                    >
-                                      + Agregar
-                                    </button>
-                                    <button
-                                      onClick={() => removeLineal(fac)}
-                                      className="text-[11px] bg-red-500/10 border border-red-500/30 text-red-400 px-2 py-1 rounded hover:bg-red-500/20 transition-colors"
-                                    >
-                                      − Eliminar
-                                    </button>
-                                    <button
-                                      onClick={() => resetFac(fac)}
-                                      className="text-[11px] bg-gray-700/50 border border-gray-700 text-gray-400 px-2 py-1 rounded hover:bg-gray-700 transition-colors"
-                                    >
-                                      ↺ Reset
-                                    </button>
+                                    <button onClick={() => addLineal(fac)} style={{ fontSize: '11px', background: `${C.blue}20`, border: `1px solid ${C.blue}40`, color: C.blue, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}>+ Agregar</button>
+                                    <button onClick={() => removeLineal(fac)} style={{ fontSize: '11px', background: `${C.red}20`, border: `1px solid ${C.red}40`, color: C.red, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}>− Eliminar</button>
+                                    <button onClick={() => resetFac(fac)} style={{ fontSize: '11px', background: `${TC.textFaint}20`, border: `1px solid ${TC.textFaint}40`, color: TC.textFaint, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}>↺ Reset</button>
                                   </div>
                                 </div>
                                 <div className="flex flex-wrap gap-2">
                                   {p.lineales.map((l: string, i: number) => (
                                     <div key={i} className="flex flex-col items-center gap-0.5">
-                                      <span className="text-[9px] text-gray-600">L{i + 1}</span>
+                                      <span style={{ fontSize: '9px', color: TC.textMuted }}>L{i + 1}</span>
                                       <input
                                         value={l}
                                         onChange={(e) => updateLinealName(fac, i, e.target.value)}
-                                        className="border border-gray-700 bg-gray-900 rounded px-2 py-1.5 text-xs font-mono w-20 text-center focus:outline-none focus:border-yellow-400/60 focus:ring-1 focus:ring-yellow-400/20 text-gray-200"
+                                        style={{ border: `1px solid ${TC.borderSoft}`, background: TC.bgCard, borderRadius: '4px', padding: '4px 8px', fontSize: '12px', fontFamily: 'monospace', width: '80px', textAlign: 'center', color: TC.text, outline: 'none' }}
                                       />
                                     </div>
                                   ))}
@@ -509,20 +635,21 @@ export default function AsignadorPreola() {
                       );
                     })}
                   </div>
-                </div>
+                </Card>
+                </>
               )}
 
               {/* ── TAB RESULTADOS ── */}
               {activeTab === "results" && results && (
-                <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-800">
-                    <span className="text-xs text-gray-400 tracking-widest uppercase">
+                <Card style={{ padding: 0 }}>
+                  <div className="px-4 py-3 border-b border-gray-800/50 background-white/5 backdrop-blur-md">
+                    <span className="text-xs text-gray-400 tracking-widest uppercase font-bold">
                       Resumen por Lineal
                     </span>
                   </div>
                   <div className="overflow-x-auto max-h-[520px] overflow-y-auto custom-scrollbar">
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 bg-gray-950 border-b border-gray-800">
+                      <thead className="sticky top-0 bg-white/5 backdrop-blur-md border-b border-gray-800/50">
                         <tr>
                           {["Facility", "Lineal", "ISOs", "Máx ISO", "Vol m³", "Máx Vol", "Ocup. ISO", "Ocup. Vol", "Estado"].map((h) => (
                             <th key={h} className="px-3 py-2.5 text-left font-semibold text-gray-500 tracking-widest uppercase text-[10px] whitespace-nowrap">
@@ -576,7 +703,7 @@ export default function AsignadorPreola() {
                       </tbody>
                     </table>
                   </div>
-                </div>
+                </Card>
               )}
             </div>
           </div>
@@ -597,12 +724,12 @@ function StatCard({ label, value, color }: { label: string, value: string | numb
     red:    "text-red-400    border-red-400/20    bg-red-400/5",
   };
   return (
-    <div className={`rounded-lg border px-3 py-2.5 ${colors[color] || colors.yellow}`}>
+    <Card style={{ padding: '10px 14px', border: `1px solid ${colors[color]?.split(' border-')[1]?.split(' ')[0] || 'rgba(255,255,255,0.1)'}` }}>
       <div className={`text-lg font-bold font-mono ${colors[color]?.split(" ")[0]}`}>
         {value}
       </div>
-      <div className="text-[10px] text-gray-500 mt-0.5 uppercase tracking-wider">{label}</div>
-    </div>
+      <div className="text-[10px] text-gray-500 mt-0.5 uppercase tracking-wider font-semibold">{label}</div>
+    </Card>
   );
 }
 
@@ -617,8 +744,27 @@ function ParamInput({ label, value, type = "text", step, onChange }: any) {
         step={step}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-700 bg-gray-900 rounded-lg px-3 py-1.5 text-sm font-mono text-gray-200 focus:outline-none focus:border-yellow-400/60 focus:ring-1 focus:ring-yellow-400/20"
+        className="w-full border border-white/10 bg-white/5 backdrop-blur-sm rounded-lg px-3 py-1.5 text-sm font-mono text-gray-200 focus:outline-none focus:border-yellow-400/60 focus:ring-1 focus:ring-yellow-400/20 transition-all"
       />
+    </div>
+  );
+}
+
+function ParamSelect({ label, value, options, onChange }: any) {
+  return (
+    <div>
+      <label className="text-[10px] text-gray-500 block mb-1 tracking-wider uppercase">
+        {label}
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full border border-white/10 bg-white/5 backdrop-blur-sm rounded-lg px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-yellow-400/60 focus:ring-1 focus:ring-yellow-400/20 transition-all"
+      >
+        {options.map((o: any) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
     </div>
   );
 }

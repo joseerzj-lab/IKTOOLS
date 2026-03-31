@@ -73,8 +73,8 @@ function ISORow({
         background: isFlagged
           ? 'rgba(248,81,73,0.07)'
           : 'var(--ar-bg-surface)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         border: `1px solid ${isAlert ? rc.border : 'var(--ar-border)'}`,
         borderLeft: isAlert ? `3px solid ${rc.bar}` : `3px solid var(--ar-border-bar)`,
         boxShadow: isAlert
@@ -131,7 +131,7 @@ function ISORow({
             style={{
               fontSize: 10, padding: '4px 10px', borderRadius: R.md, cursor: 'pointer', fontWeight: 700,
               background: C.greenBg, color: C.green, border: `1px solid ${C.greenBorder}`,
-              backdropFilter: 'blur(8px)',
+              backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
             }}
           >{isResolved ? '↩' : '✓ Resuelto'}</motion.button>
 
@@ -142,7 +142,7 @@ function ISORow({
               background: isFlagged ? 'rgba(248,81,73,0.2)' : 'rgba(248,81,73,0.08)',
               color: C.red,
               border: `1px solid ${isFlagged ? C.redBorder : 'rgba(248,81,73,0.2)'}`,
-              backdropFilter: 'blur(8px)',
+              backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
             }}
           >{isFlagged ? '✕' : 'Alerta'}</motion.button>
         </div>
@@ -187,8 +187,8 @@ function CommuneAccordion({
         margin: '4px 10px',
         borderRadius: R.lg,
         background: 'var(--ar-bg-surface)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         border: `1px solid ${isAlert ? rc.border : 'var(--ar-border)'}`,
         overflow: 'hidden',
         boxShadow: isAlert ? `0 2px 16px ${rc.glow}` : '0 1px 4px rgba(0,0,0,0.1)',
@@ -474,7 +474,7 @@ export default function TabOffRoute({
       <div style={{
         display: 'flex', alignItems: 'center', gap: 20,
         padding: '8px 20px', borderBottom: '1px solid var(--ar-border)',
-        flexShrink: 0, background: 'var(--ar-bg-header)', backdropFilter: 'blur(12px)',
+        flexShrink: 0, background: 'var(--ar-bg-header)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
       }}>
         {[
           { label: 'alertas', value: nHigh, color: C.red    },
