@@ -131,6 +131,16 @@ const APPS: AppInfo[] = [
     tagColor: 'text-[#f85149] bg-[#f85149]/10 border-[#f85149]/20',
     area: 'md:col-span-2 lg:col-span-2'
   },
+  {
+    id: 'asignador-preola',
+    title: 'Asignador PREOLA',
+    description: 'Asignación de órdenes a lineales por facility.',
+    path: '/asignador-preola',
+    icon: <Package className="h-5 w-5" />,
+    tag: 'Asignación',
+    tagColor: 'text-[#f0883e] bg-[#f0883e]/10 border-[#f0883e]/20',
+    area: 'md:col-span-1 lg:col-span-1'
+  },
 ]
 
 

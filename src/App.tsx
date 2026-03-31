@@ -13,6 +13,8 @@ import ActualizarOtif from './pages/ActualizarOtif'
 import GenerarResumen from './pages/GenerarResumen'
 import ControlDespachos from './pages/ControlDespachos'
 
+import AsignadorPreola from './pages/AsignadorPreola'
+
 import { ThemeBackground } from './components/ui/ThemeBackground'
 
 export default function App() {
@@ -36,6 +38,7 @@ export default function App() {
       <Route path="/otif" element={<ActualizarOtif />} />
       <Route path="/generar-resumen" element={<GenerarResumen />} />
       <Route path="/control-despachos" element={<ControlDespachos />} />
+      <Route path="/asignador-preola" element={<AsignadorPreola />} />
     </Routes>
     </>
   )
