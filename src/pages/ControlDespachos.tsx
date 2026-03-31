@@ -25,7 +25,7 @@ const CORS_PROXIES = [
   (url:string) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
 ]
 
-type VehResult = { vehiculo: string; vehFinal: string; patente: string; estado: 'entregado' | 'pendiente' }
+type VehResult = { vehiculo: string; vehFinal: string; patente: string; empresa: string; hora: string; estado: 'entregado' | 'pendiente' }
 type IsoRow = { ISO: string; PATENTE: string; ESTADO: string; VEHICULO_SIMPLI: string; ANALISIS: string; _dup: boolean }
 
 export default function ControlDespachos() {
@@ -37,7 +37,7 @@ export default function ControlDespachos() {
 
   /* Carga State */
   const [baseData, setBaseData] = useState<any[] | null>(null) // Para reporteData literal (CSV)
-  const [reporteMap, setReporteMap] = useState<Map<string,string> | null>(null) // Para Vehículos (Parent -> Patente)
+  const [reporteMap, setReporteMap] = useState<Map<string,{patente: string, empresa: string, fecha: string}> | null>(null) // Para Vehículos (Parent -> Info)
   const [simpliData, setSimpliData] = useState<{vehiculo:string;titulo:string}[] | null>(null)
   const [conversionMap, setConversionMap] = useState<Map<string,string> | null>(null)
   const [stats, setStats] = useState<{s1:any;s2:any;s3:any}>({s1:null,s2:null,s3:null})
@@ -89,8 +89,10 @@ export default function ControlDespachos() {
       const lines = text.split(/\r?\n/).filter(l => l.trim()); if (lines.length < 2) return
       const sep = detectSep(lines[0]); const headers = parseRow(lines[0], sep).map(clean)
       const colCom = findCol(headers, ['commerce']), colPar = findCol(headers, ['parentorder','parent_order']), colPat = findCol(headers, ['patente','Patente','placa'])
+      const colEmpresa = findCol(headers, ['empresa','transportista'])
+      const colFechaIni = findCol(headers, ['fechainicioruta','fecha_inicio','fecha_inicio_ruta','inicio_ruta'])
       
-      const map = new Map<string,string>()
+      const map = new Map<string,{patente:string, empresa:string, fecha:string}>()
       const rawData: any[] = []
       let ikeaCount = 0, withPat = 0
       
@@ -102,7 +104,11 @@ export default function ControlDespachos() {
         ikeaCount++
         if (!colPat || !obj[colPat].trim()) continue
         withPat++
-        if (colPar) map.set(obj[colPar].trim().toLowerCase(), obj[colPat].trim())
+        if (colPar) map.set(obj[colPar].trim().toLowerCase(), {
+            patente: obj[colPat].trim(),
+            empresa: colEmpresa ? (obj[colEmpresa]||'').trim() : '',
+            fecha: colFechaIni ? (obj[colFechaIni]||'').trim() : ''
+        })
       }
       setBaseData(rawData)
       setReporteMap(map)
@@ -201,20 +207,30 @@ export default function ControlDespachos() {
     if (!baseData || !reporteMap || !simpliData) return
     
     // 1. Cruzar Vehículos Check
-    const vehiculos = new Map<string, { isos: string[]; patentes: Set<string> }>()
+    const vehiculos = new Map<string, { isos: string[]; patentes: Set<string>; empresas: Set<string>; fechas: Set<string> }>()
     simpliData.forEach(({ vehiculo, titulo }) => {
-      if (!vehiculos.has(vehiculo)) vehiculos.set(vehiculo, { isos: [], patentes: new Set() })
+      if (!vehiculos.has(vehiculo)) vehiculos.set(vehiculo, { isos: [], patentes: new Set(), empresas: new Set(), fechas: new Set() })
       const entry = vehiculos.get(vehiculo)!
       entry.isos.push(titulo)
-      const pat = reporteMap.get(titulo.trim().toLowerCase())
-      if (pat) entry.patentes.add(pat)
+      const rep = reporteMap.get(titulo.trim().toLowerCase())
+      if (rep) {
+          if (rep.patente) entry.patentes.add(rep.patente)
+          if (rep.empresa) entry.empresas.add(rep.empresa)
+          if (rep.fecha) {
+              const fparts = rep.fecha.split(' ')
+              const timePart = fparts.length > 1 ? fparts[1] : fparts[0]
+              if(timePart) entry.fechas.add(timePart)
+          }
+      }
     })
     const resVeh: VehResult[] = []
     vehiculos.forEach((v, vehiculo) => {
       const patente = v.patentes.size > 0 ? [...v.patentes].join(' / ') : ''
+      const empresa = v.empresas.size > 0 ? [...v.empresas].join(' / ') : ''
+      const hora = v.fechas.size > 0 ? [...v.fechas].join(' / ') : ''
       let vehFinal = vehiculo
       if (conversionMap) { const mapped = conversionMap.get(vehiculo.toLowerCase()); if (mapped) vehFinal = mapped }
-      resVeh.push({ vehiculo, vehFinal, patente, estado: patente ? 'entregado' : 'pendiente' })
+      resVeh.push({ vehiculo, vehFinal, patente, empresa, hora, estado: patente ? 'entregado' : 'pendiente' })
     })
     resVeh.sort((a,b) => { if (a.estado !== b.estado) return a.estado === 'entregado' ? -1 : 1; return a.vehFinal.localeCompare(b.vehFinal) })
     setResultadoVeh(resVeh)
@@ -236,25 +252,23 @@ export default function ControlDespachos() {
       return !pat && !est
     })
 
-    const baseRef:Record<string, {PATENTE:string;ESTADO:string}> = {}
-    baseUnassigned.forEach(row=>{const iso=(row[colIso||'']||'').trim(); if(iso) baseRef[iso]={PATENTE:(row[colPat||'']||'').trim(), ESTADO:(row[colEst||'']||'').trim()}})
-
-    const isoCount:Record<string,number>={}; dfSimpli.forEach(v=>{isoCount[v.ISO]=(isoCount[v.ISO]||0)+1})
     const masterData: IsoRow[] = []
+    const dfSimpliMap = new Map()
+    dfSimpli.forEach(v => dfSimpliMap.set(v.ISO, v))
 
-    // Las ISOs a evaluar son las que salieron en la API sin conductor
-    dfSimpli.forEach(row => {
-      if(row.CONDUCTOR_SIMPLI!=='') return
+    baseUnassigned.forEach(row => {
+      const iso=(row[colIso||'']||'').trim()
+      if(!iso) return
       
-      const baseObj = baseRef[row.ISO]
-      // Si la ISO de la app no está en las no asignadas de la base, capaz sí salio, la ignoramos.
-      if(!baseObj) return
-
-      let analisis=''
-      let dup=false
-      if(isoCount[row.ISO]>1){ const otra=dfSimpli.find(r=>r.ISO===row.ISO&&r.CONDUCTOR_SIMPLI!==''); if(otra){analisis=`DUPLICADA (En ${otra.VEHICULO_SIMPLI||otra.ISO})`; dup=true} }
+      const simpli = dfSimpliMap.get(iso)
+      let analisis = 'Sin Asignación'
+      let dup = false
+      if (simpli) {
+         const otra=dfSimpli.find((r:any)=>r.ISO===iso && r.CONDUCTOR_SIMPLI!=='')
+         if(otra){analisis=`DUPLICADA (En ${otra.VEHICULO_SIMPLI||otra.ISO})`; dup=true}
+      }
       
-      masterData.push({ ISO:row.ISO, PATENTE:baseObj.PATENTE, ESTADO:baseObj.ESTADO, VEHICULO_SIMPLI:row.VEHICULO_SIMPLI, ANALISIS:analisis, _dup:dup })
+      masterData.push({ ISO:iso, PATENTE:'', ESTADO:'', VEHICULO_SIMPLI: simpli ? simpli.VEHICULO_SIMPLI : '', ANALISIS:analisis, _dup:dup })
     })
 
     setResultadoIso(masterData)
@@ -263,6 +277,44 @@ export default function ControlDespachos() {
 
     // Automáticamente ir a Vehiculos
     setActiveTab('vehiculos')
+  }
+
+  /* Excel-like Filters State */
+  const [colFiltersVeh, setColFiltersVeh] = useState<Record<string, Set<string>>>({})
+  const [colFiltersIso, setColFiltersIso] = useState<Record<string, Set<string>>>({})
+  const [activePopupVeh, setActivePopupVeh] = useState<string | null>(null)
+  const [activePopupIso, setActivePopupIso] = useState<string | null>(null)
+  const [popupSearch, setPopupSearch] = useState('')
+  const [tempSelected, setTempSelected] = useState<Set<string>>(new Set())
+  const popupRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if ((activePopupVeh || activePopupIso) && popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setActivePopupVeh(null); setActivePopupIso(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [activePopupVeh, activePopupIso])
+
+  const togglePopupVeh = (col: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (activePopupVeh === col) setActivePopupVeh(null)
+    else { setActivePopupVeh(col); setPopupSearch(''); setTempSelected(colFiltersVeh[col] ? new Set(colFiltersVeh[col]) : new Set(resultadoVeh.map(r => String((r as any)[col] || '')))) }
+  }
+  const togglePopupIso = (col: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (activePopupIso === col) setActivePopupIso(null)
+    else { setActivePopupIso(col); setPopupSearch(''); setTempSelected(colFiltersIso[col] ? new Set(colFiltersIso[col]) : new Set(resultadoIso.map(r => String((r as any)[col] || '')))) }
+  }
+  const applyFilterVeh = (col: string) => {
+    setColFiltersVeh(p => { const next = {...p}; if (tempSelected.size === 0 || tempSelected.size === new Set(resultadoVeh.map(r => String((r as any)[col] || ''))).size) delete next[col]; else next[col] = tempSelected; return next })
+    setActivePopupVeh(null)
+  }
+  const applyFilterIso = (col: string) => {
+    setColFiltersIso(p => { const next = {...p}; if (tempSelected.size === 0 || tempSelected.size === new Set(resultadoIso.map(r => String((r as any)[col] || ''))).size) delete next[col]; else next[col] = tempSelected; return next })
+    setActivePopupIso(null)
   }
 
   const [sortConfigVeh, setSortConfigVeh] = useState<{key:string, dir:'asc'|'desc'} | null>(null)
@@ -297,18 +349,41 @@ export default function ControlDespachos() {
     return 0
   })
 
-  const filteredVeh = sortedVeh.filter(r => !ignorarVehiculos.includes(r.vehFinal)).filter(r => !filterVehQ || r.vehiculo.toLowerCase().includes(filterVehQ.toLowerCase()) || r.patente.toLowerCase().includes(filterVehQ.toLowerCase()) || r.vehFinal.toLowerCase().includes(filterVehQ.toLowerCase()))
-  const filteredIso = sortedIso.filter(r => !filterIsoQ || r.ISO.toLowerCase().includes(filterIsoQ.toLowerCase()) || r.VEHICULO_SIMPLI.toLowerCase().includes(filterIsoQ.toLowerCase()) || r.ANALISIS.toLowerCase().includes(filterIsoQ.toLowerCase()))
+  let filteredVeh = sortedVeh.filter(r => !ignorarVehiculos.includes(r.vehFinal)).filter(r => !filterVehQ || r.vehiculo.toLowerCase().includes(filterVehQ.toLowerCase()) || r.patente.toLowerCase().includes(filterVehQ.toLowerCase()) || r.vehFinal.toLowerCase().includes(filterVehQ.toLowerCase()))
+  Object.entries(colFiltersVeh).forEach(([col, vals]) => { if (vals.size > 0) filteredVeh = filteredVeh.filter(row => vals.has(String((row as any)[col] || ''))) })
+
+  let filteredIso = sortedIso.filter(r => !filterIsoQ || r.ISO.toLowerCase().includes(filterIsoQ.toLowerCase()) || r.VEHICULO_SIMPLI.toLowerCase().includes(filterIsoQ.toLowerCase()) || r.ANALISIS.toLowerCase().includes(filterIsoQ.toLowerCase()))
+  Object.entries(colFiltersIso).forEach(([col, vals]) => { if (vals.size > 0) filteredIso = filteredIso.filter(row => vals.has(String((row as any)[col] || ''))) })
 
   const toggleIgnorar = (vehFinal: string) => {
     saveIgnorados(ignorarVehiculos.includes(vehFinal) ? ignorarVehiculos.filter(v => v !== vehFinal) : [...ignorarVehiculos, vehFinal])
   }
 
-  const copiarVehiculos = () => {
+  const copiarVehiculos = async () => {
     if(!filteredVeh.length) return
-    let tsv = 'Vehículo\tVehículo Final\tPatente\tEstado\n'
-    filteredVeh.forEach(r => { tsv += `${r.vehiculo}\t${r.vehFinal}\t${r.patente}\t${r.estado === 'entregado' ? 'Vehículo Entregado' : 'Vehículo Pendiente'}\n` })
-    navigator.clipboard?.writeText(tsv).then(() => flash('✓ Tabla Vehículos copiada'))
+    let tsv = 'Vehículo\tVehículo Final\tPatente\tEmpresa\tHora Inicio\tEstado\n'
+    filteredVeh.forEach(r => { tsv += `${r.vehiculo}\t${r.vehFinal}\t${r.patente}\t${r.empresa}\t${r.hora}\t${r.estado === 'entregado' ? 'Vehículo Entregado' : 'Vehículo Pendiente'}\n` })
+    
+    let html = '<table style="border-collapse: collapse; font-family: sans-serif; font-size: 11px;"><thead><tr>'
+    const headers = ['Vehículo', 'Vehículo Final', 'Patente', 'Empresa', 'Hora Inicio', 'Estado']
+    headers.forEach(h => html += `<th style="border: 1px solid black; background-color: #f3f4f6; padding: 4px;">${h}</th>`)
+    html += '</tr></thead><tbody>'
+    filteredVeh.forEach(r => {
+      html += '<tr>'
+      const cells = [r.vehiculo, r.vehFinal, r.patente, r.empresa, r.hora, r.estado === 'entregado' ? 'Vehículo Entregado' : 'Vehículo Pendiente']
+      cells.forEach(c => html += `<td style="border: 1px solid black; padding: 4px;">${c}</td>`)
+      html += '</tr>'
+    })
+    html += '</tbody></table>'
+
+    try {
+      const blobText = new Blob([tsv], { type: 'text/plain' })
+      const blobHtml = new Blob([html], { type: 'text/html' })
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blobText, 'text/html': blobHtml })])
+      flash('✓ Tabla Vehículos copiada (Excel)')
+    } catch {
+      navigator.clipboard?.writeText(tsv).then(() => flash('✓ Tabla Vehículos copiada (Texto)'))
+    }
   }
 
   const copiarColumnaISO = () => {
@@ -356,6 +431,51 @@ export default function ControlDespachos() {
     if (conf?.key !== key) return <span className="text-gray-500/30">↕</span>
     return conf.dir === 'asc' ? <span className="text-blue-500">↑</span> : <span className="text-blue-500">↓</span>
   }
+
+  const renderPopup = (col: string, popupType: 'veh'|'iso', dataList: any[]) => {
+    const isIso = popupType === 'iso'
+    const actPopup = isIso ? activePopupIso : activePopupVeh
+    if (actPopup !== col) return null
+    return (
+      <div ref={popupRef} className="absolute top-full left-0 mt-1 min-w-[200px] bg-white dark:bg-gray-800 rounded-lg shadow-xl border p-3 z-[100] font-sans normal-case text-left" style={{ borderColor: TC.borderSoft, background: TC.bgCard }} onClick={e => e.stopPropagation()}>
+        <input type="text" placeholder="Buscar..." value={popupSearch} onChange={e => setPopupSearch(e.target.value)} className="w-full text-[11px] p-1.5 mb-2 border rounded dark:bg-gray-900 font-sans outline-none focus:border-blue-500" style={{ borderColor: TC.borderSoft, color: TC.text, background: TC.bg }} autoFocus />
+        <div className="flex gap-2 mb-2 text-[10px]">
+          <button onClick={() => setTempSelected(new Set(dataList.map(r => String((r as any)[col] || ''))))} className="text-blue-500 hover:underline inline-block">Todos</button>
+          <button onClick={() => setTempSelected(new Set())} className="text-blue-500 hover:underline inline-block">Ninguno</button>
+        </div>
+        <div className="max-h-40 overflow-y-auto mb-3 flex flex-col gap-1 text-[11px] font-sans pr-1">
+          {(() => {
+            const uniqueVals = Array.from(new Set(dataList.map(r => String((r as any)[col] || '')))).sort()
+            const searchedVals = uniqueVals.filter(v => v.toLowerCase().includes(popupSearch.toLowerCase()))
+            return searchedVals.map(v => (
+              <label key={v} className="flex items-center gap-2 cursor-pointer p-1 rounded transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ color: TC.text }}>
+                <input type="checkbox" checked={tempSelected.has(v)} onChange={e => { const n=new Set(tempSelected); if(e.target.checked)n.add(v); else n.delete(v); setTempSelected(n) }} />
+                <span className="truncate">{v || '(vacío)'}</span>
+              </label>
+            ))
+          })()}
+        </div>
+        <div className="flex gap-2">
+          <Btn variant="primary" onClick={() => isIso ? applyFilterIso(col) : applyFilterVeh(col)} style={{ flex: 1, padding: '4px', fontSize: 10 }}>Aplicar</Btn>
+          <Btn onClick={() => isIso ? setActivePopupIso(null) : setActivePopupVeh(null)} style={{ flex: 1, padding: '4px', fontSize: 10 }}>Cancelar</Btn>
+        </div>
+      </div>
+    )
+  }
+
+  const vehCols = [
+    { key: 'vehFinal', label: 'Vehículo Final' },
+    { key: 'patente', label: 'Patente' },
+    { key: 'empresa', label: 'Empresa' },
+    { key: 'hora', label: 'Inicio' },
+    { key: 'estado', label: 'Estado' },
+  ]
+
+  const isoCols = [
+    { key: 'ISO', label: 'ISO' },
+    { key: 'VEHICULO_SIMPLI', label: 'Vehículo Simpli' },
+    { key: 'ANALISIS', label: 'Análisis' },
+  ]
 
   return (
     <PageShell>
@@ -509,15 +629,17 @@ export default function ControlDespachos() {
                     <table ref={tableRefVeh} className="w-full text-xs font-mono" style={{ borderCollapse: 'collapse' }}>
                       <thead>
                         <tr className="sticky top-0 z-10 shadow-sm transition-colors">
-                          <th className="text-left p-4 text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-white/5" style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }} onClick={() => handleSortVeh('vehFinal')}>
-                            Vehículo Final {getSortIcon('vehFinal', 'veh')}
-                          </th>
-                          <th className="text-left p-4 text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-white/5" style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }} onClick={() => handleSortVeh('patente')}>
-                            Patente {getSortIcon('patente', 'veh')}
-                          </th>
-                          <th className="text-left p-4 text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-white/5" style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }} onClick={() => handleSortVeh('estado')}>
-                            Estado {getSortIcon('estado', 'veh')}
-                          </th>
+                          {vehCols.map(c => (
+                            <th key={c.key} className="text-left p-3 text-[10px] font-bold uppercase tracking-wider relative group select-none" style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }}>
+                              <div className="flex items-center gap-1 w-full relative">
+                                <span className="cursor-pointer hover:text-blue-400" onClick={() => handleSortVeh(c.key)}>{c.label} {getSortIcon(c.key, 'veh')}</span>
+                                <button onClick={(e) => togglePopupVeh(c.key, e)} className={`p-1 rounded transition-colors -mt-1 ml-auto ${colFiltersVeh[c.key] ? 'bg-blue-500 text-white' : 'hover:bg-black/10 dark:hover:bg-white/10 opacity-0 group-hover:opacity-100'}`}>
+                                  <Search size={10} />
+                                </button>
+                              </div>
+                              {renderPopup(c.key, 'veh', resultadoVeh)}
+                            </th>
+                          ))}
                           {editandoIgnorados && (
                              <th className="text-right p-4 text-[10px] font-bold uppercase tracking-wider" style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }}>Acción</th>
                           )}
@@ -526,11 +648,13 @@ export default function ControlDespachos() {
                       <tbody>
                         {filteredVeh.map((r, i) => (
                           <tr key={i} className="group hover:bg-blue-500/5 transition-colors border-b" style={{ borderColor: TC.borderSoft }}>
-                            <td className="p-4 font-bold" style={{ color: TC.text }}>{r.vehFinal} <span className="text-[9px] opacity-30 font-normal">({r.vehiculo})</span></td>
-                            <td className="p-4">
+                            <td className="p-3 font-bold" style={{ color: TC.text }}>{r.vehFinal}</td>
+                            <td className="p-3">
                               {r.patente ? <span className="bg-blue-500/10 text-blue-400 font-bold px-2 py-1 rounded text-[10px] border border-blue-500/20">{r.patente}</span> : <span className="text-[10px] opacity-30 italic">No detectada</span>}
                             </td>
-                            <td className="p-4">
+                            <td className="p-3 font-mono opacity-80">{r.empresa}</td>
+                            <td className="p-3 font-bold text-blue-400">{r.hora}</td>
+                            <td className="p-3">
                               {r.estado === 'entregado' ? (
                                 <div className="flex items-center gap-2 text-green-500 font-bold"><div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />Entregado</div>
                               ) : (
@@ -538,7 +662,7 @@ export default function ControlDespachos() {
                               )}
                             </td>
                             {editandoIgnorados && (
-                              <td className="p-4 text-right">
+                              <td className="p-3 text-right">
                                 <button className="text-[9px] text-red-500 hover:text-white bg-red-500/10 hover:bg-red-500 px-2 py-1 rounded transition-colors" onClick={() => toggleIgnorar(r.vehFinal)}>Ocultar</button>
                               </td>
                             )}
@@ -582,15 +706,17 @@ export default function ControlDespachos() {
                     <table ref={tableRefIso} className="w-full text-xs font-mono" style={{ borderCollapse: 'collapse' }}>
                       <thead>
                         <tr className="sticky top-0 z-10 shadow-sm transition-colors">
-                          <th className="text-left p-4 text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-white/5" style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }} onClick={() => handleSortIso('ISO')}>
-                            ISO {getSortIcon('ISO', 'iso')}
-                          </th>
-                          <th className="text-left p-4 text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-white/5" style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }} onClick={() => handleSortIso('VEHICULO_SIMPLI')}>
-                            Vehículo Simpli {getSortIcon('VEHICULO_SIMPLI', 'iso')}
-                          </th>
-                          <th className="text-left p-4 text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-white/5" style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }} onClick={() => handleSortIso('ANALISIS')}>
-                            Análisis {getSortIcon('ANALISIS', 'iso')}
-                          </th>
+                          {isoCols.map(c => (
+                            <th key={c.key} className="text-left p-3 text-[10px] font-bold uppercase tracking-wider relative group select-none" style={{ background: TC.headerBg, color: TC.textDisabled, borderBottom: `1px solid ${TC.borderSoft}` }}>
+                              <div className="flex items-center gap-1 w-full relative">
+                                <span className="cursor-pointer hover:text-orange-400" onClick={() => handleSortIso(c.key)}>{c.label} {getSortIcon(c.key, 'iso')}</span>
+                                <button onClick={(e) => togglePopupIso(c.key, e)} className={`p-1 rounded transition-colors -mt-1 ml-auto ${colFiltersIso[c.key] ? 'bg-orange-500 text-white' : 'hover:bg-black/10 dark:hover:bg-white/10 opacity-0 group-hover:opacity-100'}`}>
+                                  <Search size={10} />
+                                </button>
+                              </div>
+                              {renderPopup(c.key, 'iso', resultadoIso)}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>

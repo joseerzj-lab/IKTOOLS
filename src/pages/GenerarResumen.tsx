@@ -162,11 +162,12 @@ export default function GenerarResumen() {
       for (const veh in vehicleGroups) {
         const rows = vehicleGroups[veh]
         // Determinar Vehículo Final
-        const vehFinal = ruteoDict[veh] || veh
+        let vehFinal = ruteoDict[veh] || veh
 
-        // Excluir VEH98 y VEH99 de la tabla resumen
-        if (vehFinal.toUpperCase() === 'VEH98' || vehFinal.toUpperCase() === 'VEH99') {
-          continue
+        if (vehFinal.toUpperCase() === 'VEH98') {
+          vehFinal = 'Proyectos Leslie'
+        } else if (vehFinal.toUpperCase() === 'VEH99') {
+          vehFinal = 'VEH01 Postventa'
         }
         
         // Si no está activado 'Incluir Postventa y Proyectos', filtramos si tiene un conductor asignado
@@ -249,7 +250,18 @@ export default function GenerarResumen() {
         })
       }
 
-      summaries.sort((a, b) => String(a.Vehículo).localeCompare(String(b.Vehículo)))
+      const getGroup = (v: string) => {
+        const u = v.toUpperCase()
+        if (u.includes('POSTVENTA') || u === 'VEH01 POSTVENTA') return 3
+        if (u.includes('PROYECTO') || u === 'PROYECTOS LESLIE') return 2
+        return 1 // Regular/Mini
+      }
+      summaries.sort((a, b) => {
+        const gA = getGroup(String(a.Vehículo))
+        const gB = getGroup(String(b.Vehículo))
+        if (gA !== gB) return gA - gB
+        return String(a.Vehículo).localeCompare(String(b.Vehículo))
+      })
       setResumenData(summaries)
       addLog(`Resumen generado para ${summaries.length} vehículos.`, 'ok')
       
@@ -324,15 +336,23 @@ export default function GenerarResumen() {
     }
   }
 
-  // Estilos idénticos a Ruteo AM (RuteoPR)
+  // Estilos Aptos 12 sin negrita
   const TH_STYLE = {
-    background: '#0058A3', color: '#ffffff', fontWeight: 700,
-    padding: '8px 12px', border: '1px solid #000', textAlign: 'center' as const,
-    whiteSpace: 'nowrap' as const, fontSize: '11px'
+    background: '#cbd5e1', color: '#000000', fontWeight: 'bold' as const,
+    padding: '6px 10px', border: '1px solid #000000', textAlign: 'center' as const,
+    whiteSpace: 'nowrap' as const, fontSize: '12pt', fontFamily: '"Aptos", "Calibri", sans-serif'
   }
   const TD_STYLE = {
-    padding: '6px 10px', border: '1px solid #000', textAlign: 'center' as const,
-    color: '#111', fontSize: '11px', fontWeight: 'bold'
+    padding: '6px 10px', border: '1px solid #000000', textAlign: 'center' as const,
+    color: '#000000', fontSize: '12pt', fontWeight: 'normal' as const, fontFamily: '"Aptos", "Calibri", sans-serif'
+  }
+
+  const updateCell = (rowIndex: number, column: string, value: string) => {
+    setResumenData(prev => {
+      const next = [...prev]
+      next[rowIndex] = { ...next[rowIndex], [column]: value }
+      return next
+    })
   }
 
   return (
@@ -438,39 +458,20 @@ export default function GenerarResumen() {
 
                     {/* Tabla Oculta para Exportación (Con Formato Completo) */}
                     <div style={{ position: 'absolute', top: '-10000px', left: '-10000px' }}>
-                      <div ref={tableRef} style={{ background: '#ffffff', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0', width: 'max-content' }}>
-                        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontFamily: 'Inter, Arial, sans-serif' }}>
+                      <div ref={tableRef} style={{ background: '#ffffff', padding: '8px', width: 'max-content' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: '"Aptos", "Calibri", sans-serif' }}>
                           <thead>
-                            <tr style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
-                              {Object.keys(resumenData[0] || {}).map((k, idx, arr) => (
-                                <th key={`exp-th-${k}`} style={{
-                                  ...TH_STYLE,
-                                  border: '1px solid #94a3b8',
-                                  borderRight: idx === arr.length - 1 ? '1px solid #94a3b8' : 'none',
-                                  background: '#cbd5e1', // Celeste grisáceo sin gradiente
-                                  color: '#000000',
-                                  padding: '12px 14px',
-                                  fontSize: '12px',
-                                  fontWeight: 'bold',
-                                  textTransform: 'uppercase',
-                                  letterSpacing: '0.05em'
-                                }}>{k}</th>
+                            <tr>
+                              {Object.keys(resumenData[0] || {}).map((k) => (
+                                <th key={`exp-th-${k}`} style={TH_STYLE}>{k}</th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
                             {resumenData.map((row, i) => (
                               <tr key={`exp-tr-${i}`} style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
-                                 {Object.values(row).map((v: any, j, arr) => (
-                                   <td key={`exp-td-${i}-${j}`} style={{
-                                     ...TD_STYLE,
-                                     border: '1px solid #cbd5e1',
-                                     borderTop: 'none',
-                                     borderRight: j === arr.length - 1 ? '1px solid #cbd5e1' : 'none',
-                                     padding: '10px 14px',
-                                     color: '#000000',
-                                     fontWeight: 600
-                                   }}>{v}</td>
+                                 {Object.values(row).map((v: any, j) => (
+                                   <td key={`exp-td-${i}-${j}`} style={TD_STYLE}>{v}</td>
                                  ))}
                               </tr>
                             ))}
@@ -491,8 +492,15 @@ export default function GenerarResumen() {
                       <tbody className="divide-y divide-black/10">
                         {resumenData.map((row, i) => (
                           <tr key={`vis-tr-${i}`} className="hover:bg-black/5 transition-colors duration-75 text-black">
-                            {Object.values(row).map((v: any, j) => (
-                              <td key={`vis-td-${i}-${j}`} className="px-4 py-2 whitespace-nowrap">{v}</td>
+                            {Object.entries(row).map(([k, v]: [string, any], j) => (
+                              <td key={`vis-td-${i}-${j}`} className="px-1 py-1 whitespace-nowrap">
+                                <input 
+                                  type="text" 
+                                  value={v || ''} 
+                                  onChange={(e) => updateCell(i, k, e.target.value)} 
+                                  className="bg-transparent border-none outline-none focus:ring-1 focus:ring-blue-500 rounded px-3 py-1 w-full text-black hover:bg-black/5 transition-colors"
+                                />
+                              </td>
                             ))}
                           </tr>
                         ))}
