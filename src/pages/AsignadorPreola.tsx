@@ -21,7 +21,7 @@ const DEFAULT_PARAMS: Record<string, any> = {
   "9631": { maxPos: 60, maxVol: 6, lineales: ["96311", "96312"] },
   "9632": { maxPos: 60, maxVol: 6, lineales: ["96321", "96322"] },
   "9633": { maxPos: 60, maxVol: 6, lineales: ["96331", "96332"] },
-  "9634": { maxPos: 40, maxVol: 6, lineales: ["VALPO-1", "VALPO-2", "VALPO-3", "VALPO-4", "VALPO-5"] },
+  "9634": { maxPos: 40, maxVol: 6, lineales: ["VAL1", "VAL2", "VAL3", "VAL4", "VAL5"] },
   "9764": { maxPos: 60, maxVol: 6, lineales: ["97641", "97642"] },
   "9765": { maxPos: 60, maxVol: 6, lineales: ["97651", "97652"] },
   "9767": { maxPos: 60, maxVol: 6, lineales: ["97671", "97672"] },
@@ -168,12 +168,20 @@ function defaultForFac(fac: string) {
     : { maxPos: 60, maxVol: 6, lineales: [`${fac}1`, `${fac}2`] };
 }
 
-/** Genera un array de nombres de lineales con la convención {fac}{N} */
+/** Genera un array de nombres de lineales detectando el prefijo del patrón existente */
 function generateLinealNames(fac: string, count: number, existing: string[]): string[] {
+  // Detectar prefijo desde los nombres existentes (ej: "VAL" de "VAL1", "VAL5")
+  let autoPrefix = fac;
+  if (existing.length > 0) {
+    const lastName = existing[existing.length - 1];
+    const match = lastName.match(/^(.*?)(\d+)$/);
+    if (match) autoPrefix = match[1]; // ej: "VAL" de "VAL5"
+  }
+
   const names: string[] = [];
   for (let i = 0; i < count; i++) {
-    // Preservar nombre custom si ya existía, si no, generar default
-    names.push(existing[i] !== undefined ? existing[i] : `${fac}${i + 1}`);
+    // Preservar nombre custom si ya existía, si no, generar con el prefijo detectado
+    names.push(existing[i] !== undefined ? existing[i] : `${autoPrefix}${i + 1}`);
   }
   return names;
 }
@@ -195,7 +203,7 @@ export default function AsignadorPreola() {
   const [colHeaders, setColHeaders] = useState<string[]>([]);
   const [params, setParams] = useState<any>(() => {
     try {
-      const c = localStorage.getItem("preola_params_v4");
+      const c = localStorage.getItem("preola_params_v5");
       return c ? JSON.parse(c) : deepClone(DEFAULT_PARAMS);
     } catch { return deepClone(DEFAULT_PARAMS); }
   });
@@ -209,7 +217,7 @@ export default function AsignadorPreola() {
     () => (localStorage.getItem("preola_mode") as "maxISOs" | "maxM3") || "maxISOs"
   );
 
-  useEffect(() => { localStorage.setItem("preola_params_v4", JSON.stringify(params)); }, [params]);
+  useEffect(() => { localStorage.setItem("preola_params_v5", JSON.stringify(params)); }, [params]);
   useEffect(() => { localStorage.setItem("preola_mode", globalMode); }, [globalMode]);
 
   // Facilities presentes en el archivo cargado
@@ -319,6 +327,16 @@ export default function AsignadorPreola() {
     setParams((prev: any) => {
       const current = prev[fac] || defaultForFac(fac);
       const newLineales = generateLinealNames(fac, count, current.lineales);
+      return { ...prev, [fac]: { ...current, lineales: newLineales } };
+    });
+  };
+
+  /** Cambia el PREFIJO de todos los lineales del facility en masa */
+  const updatePrefix = (fac: string, prefix: string) => {
+    if (!prefix.trim()) return;
+    setParams((prev: any) => {
+      const current = prev[fac] || defaultForFac(fac);
+      const newLineales = current.lineales.map((_: string, i: number) => `${prefix.trim()}${i + 1}`);
       return { ...prev, [fac]: { ...current, lineales: newLineales } };
     });
   };
@@ -668,8 +686,51 @@ export default function AsignadorPreola() {
                                   </div>
                                 </div>
 
-                                {/* Lineales individuales */}
+                                {/* Prefijo global + lineales individuales */}
                                 <div className="mt-4">
+                                  {/* Prefijo */}
+                                  <div className="flex items-center gap-3 mb-3">
+                                    <div style={{ flex: '0 0 auto' }}>
+                                      <label className="text-[10px] text-gray-500 block mb-1 tracking-wider uppercase">
+                                        Prefijo de lineales
+                                      </label>
+                                      <div className="flex items-center gap-1.5">
+                                        <input
+                                          type="text"
+                                          defaultValue={(() => {
+                                            const first = p.lineales[0] || '';
+                                            const m = first.match(/^(.*?)(\d+)$/);
+                                            return m ? m[1] : fac;
+                                          })()}
+                                          onBlur={(e) => updatePrefix(fac, e.target.value)}
+                                          onKeyDown={(e) => { if (e.key === 'Enter') { updatePrefix(fac, (e.target as HTMLInputElement).value); (e.target as HTMLInputElement).blur(); } }}
+                                          placeholder={fac}
+                                          style={{
+                                            width: '72px', border: `1px solid ${TC.borderSoft}`,
+                                            background: TC.bgCard, borderRadius: '6px',
+                                            padding: '4px 8px', fontSize: '13px',
+                                            fontFamily: 'monospace', fontWeight: 'bold',
+                                            color: C.orange, outline: 'none', textAlign: 'center'
+                                          }}
+                                        />
+                                        <span style={{ fontSize: '10px', color: TC.textFaint }}>+ N</span>
+                                        <button
+                                          onClick={(e) => {
+                                            const inp = (e.currentTarget.closest('div')!.querySelector('input') as HTMLInputElement);
+                                            updatePrefix(fac, inp.value);
+                                          }}
+                                          style={{
+                                            fontSize: '10px', background: `${C.orange}20`,
+                                            border: `1px solid ${C.orange}40`, color: C.orange,
+                                            padding: '3px 8px', borderRadius: '4px', cursor: 'pointer'
+                                          }}
+                                        >
+                                          Aplicar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+
                                   <div className="flex items-center justify-between mb-2">
                                     <span style={{ fontSize: '10px', color: TC.textFaint, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                                       Nombres de Lineales
