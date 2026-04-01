@@ -239,6 +239,7 @@ export default function AsignadorPreola() {
     } catch { return deepClone(DEFAULT_PARAMS); }
   });
   const [results, setResults] = useState<any>(null);
+  const [dragging, setDragging] = useState(false);
   const [expandedFacs, setExpandedFacs] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<"params" | "results">("params");
 
