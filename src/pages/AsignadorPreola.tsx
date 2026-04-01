@@ -35,10 +35,12 @@ const DEFAULT_PARAMS: Record<string, any> = {
 };
 
 // ─────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────
 //  ALGORITMO DE ASIGNACIÓN
+//  Modo: "maxISOs" → ordena vol ASC para meter más órdenes
+//        "maxM3"   → ordena vol DESC para maximizar m³
+//  Overflow: greedy de mínimo m³ acumulado (balanceo real)
 // ─────────────────────────────────────────────────────────
-function runAssignment(rows: any[], params: any, globalAsignacion: string, globalOverflow: string) {
+function runAssignment(rows: any[], params: any, mode: "maxISOs" | "maxM3") {
   // Agrupar por FACILITY
   const byFacility: Record<string, any[]> = {};
   rows.forEach((row) => {
@@ -48,121 +50,92 @@ function runAssignment(rows: any[], params: any, globalAsignacion: string, globa
     byFacility[fac].push(row);
   });
 
-  const assignmentMap: Record<string, string> = {}; 
+  const assignmentMap: Record<string, string> = {};
   const summaryData: any[] = [];
 
   Object.entries(byFacility).forEach(([fac, orders]) => {
     const p = params[fac] || DEFAULT_PARAMS[fac] || {};
-    const lineales = p.lineales && p.lineales.length > 0 ? p.lineales : [`${fac}1`];
+    const lineales: string[] = p.lineales && p.lineales.length > 0 ? p.lineales : [`${fac}1`];
     const maxPos = Number(p.maxPos) || 60;
     const maxVol = Number(p.maxVol) || 6;
     const N = lineales.length;
 
-    // Ordenar: ROUTE_TO ASC, ID_ORDEN ASC
+    // ── Fase 1: ordenar según modo ─────────────────────
+    // Base: ROUTE_TO ASC, ID_ORDEN ASC (mantiene agrupación de rutas)
+    // Luego dentro de cada "slot" se prioriza por volumen según modo.
     const sorted = [...orders].sort((a, b) => {
       const rtA = String(a.ROUTE_TO ?? a.route_to ?? "");
       const rtB = String(b.ROUTE_TO ?? b.route_to ?? "");
       if (rtA < rtB) return -1;
       if (rtA > rtB) return 1;
-      const idA = String(a.ID_ORDEN ?? a.id_orden ?? "");
-      const idB = String(b.ID_ORDEN ?? b.id_orden ?? "");
-      return idA < idB ? -1 : idA > idB ? 1 : 0;
+      // Dentro de la misma ruta, ordenar por volumen según modo
+      const volA = parseFloat(a.VOLUMEN_M3 ?? a.volumen_m3 ?? 0) || 0;
+      const volB = parseFloat(b.VOLUMEN_M3 ?? b.volumen_m3 ?? 0) || 0;
+      if (mode === "maxISOs") return volA - volB; // volumen ASC → caben más órdenes pequeñas
+      if (mode === "maxM3")   return volB - volA; // volumen DESC → maximizar m³ usados
+      return 0;
     });
 
-    const linealStats: Record<string, any> = {};
+    // ── Inicializar stats por lineal ───────────────────
+    const linealStats: Record<string, { count: number; vol: number; overflow: boolean }> = {};
     lineales.forEach((l: string) => { linealStats[l] = { count: 0, vol: 0, overflow: false }; });
 
-    let isOverflowPhase = false;
-    const overflowOrders: {order: any, vol: number, orderId: string}[] = [];
+    // ── Fase 2: asignación secuencial (llenado lineal) ─
+    let currentIdx = 0;
+    const overflowOrders: { order: any; vol: number; orderId: string }[] = [];
 
-    // Phase 1: Regular Assignment
-    let currentOptimizadoIdx = 0;
-
-    sorted.forEach((order) => {
+    for (const order of sorted) {
       const vol = parseFloat(order.VOLUMEN_M3 ?? order.volumen_m3 ?? 0) || 0;
       const orderId = String(order.ID_ORDEN ?? order.id_orden ?? "");
-
-      if (isOverflowPhase) {
-        overflowOrders.push({ order, vol, orderId });
-        return;
-      }
-
       let assigned = false;
 
-      if (globalAsignacion === "optimizado") {
-        while (currentOptimizadoIdx < N) {
-          const lName = lineales[currentOptimizadoIdx];
-          const st = linealStats[lName];
-          // Epsilon para errores de punto flotante en volumen
-          if ((st.count + 1) <= maxPos && (st.vol + vol) <= maxVol + 0.0001) {
-            assignmentMap[orderId] = lName;
-            st.count++;
-            st.vol += vol;
-            assigned = true;
-            break;
-          } else {
-            currentOptimizadoIdx++;
-          }
-        }
-      } else {
-        // "balanceado" (round robin respetando maximos)
-        let minUtil = Infinity;
-        let bestIdx = -1;
-        for (let i = 0; i < N; i++) {
-          const lName = lineales[i];
-          const st = linealStats[lName];
-          if ((st.count + 1) <= maxPos && (st.vol + vol) <= maxVol + 0.0001) {
-            const util = Math.max((st.count + 1) / maxPos, (st.vol + vol) / maxVol);
-            if (util < minUtil) {
-              minUtil = util;
-              bestIdx = i;
-            }
-          }
-        }
-        if (bestIdx !== -1) {
-          const lName = lineales[bestIdx];
-          const st = linealStats[lName];
+      // Intentar desde el lineal actual hacia adelante
+      while (currentIdx < N) {
+        const lName = lineales[currentIdx];
+        const st = linealStats[lName];
+        const fits = (st.count + 1) <= maxPos && (st.vol + vol) <= maxVol + 0.0001;
+        if (fits) {
           assignmentMap[orderId] = lName;
           st.count++;
           st.vol += vol;
           assigned = true;
+          break;
+        } else {
+          // Lineal lleno → avanzar
+          currentIdx++;
         }
       }
 
       if (!assigned) {
-        // Si no se pudo asignar a ninguno (topados a su maximo), entramos a overflow
-        isOverflowPhase = true;
         overflowOrders.push({ order, vol, orderId });
-      }
-    });
-
-    // Phase 2: Overflow Logic
-    if (overflowOrders.length > 0) {
-      if (globalOverflow === "optimizado") {
-        // optimizado: asignar todo el exceso al ultimo lineal
-        const lastLName = lineales[N - 1];
-        const st = linealStats[lastLName];
-        overflowOrders.forEach(({ vol, orderId }) => {
-          assignmentMap[orderId] = lastLName;
-          st.count++;
-          st.vol += vol;
-          st.overflow = true;
-        });
-      } else {
-        // balanceado: distribuir el resto en orden rotativo
-        let rrIdx = 0;
-        overflowOrders.forEach(({ vol, orderId }) => {
-          const lName = lineales[rrIdx % N];
-          const st = linealStats[lName];
-          assignmentMap[orderId] = lName;
-          st.count++;
-          st.vol += vol;
-          st.overflow = true;
-          rrIdx++;
-        });
       }
     }
 
+    // ── Fase 3: Overflow balanceado por m³ (greedy) ───
+    // Asignar cada orden overflow al lineal con MENOS m³ en ese momento.
+    // Esto garantiza que al terminar, todos los lineales tengan m³ similares.
+    if (overflowOrders.length > 0) {
+      overflowOrders.forEach(({ vol, orderId }) => {
+        // Encontrar lineal con menor m³ acumulado
+        let minVol = Infinity;
+        let minIdx = 0;
+        for (let i = 0; i < N; i++) {
+          const st = linealStats[lineales[i]];
+          if (st.vol < minVol) {
+            minVol = st.vol;
+            minIdx = i;
+          }
+        }
+        const lName = lineales[minIdx];
+        const st = linealStats[lName];
+        assignmentMap[orderId] = lName;
+        st.count++;
+        st.vol += vol;
+        st.overflow = true;
+      });
+    }
+
+    // ── Construir summary ──────────────────────────────
     lineales.forEach((l: string) => {
       const s = linealStats[l];
       summaryData.push({
@@ -173,8 +146,8 @@ function runAssignment(rows: any[], params: any, globalAsignacion: string, globa
         maxPos,
         maxVol,
         overPos: s.count > maxPos,
-        overVol: s.vol > (maxVol + 0.0001),
-        overflow: s.overflow || s.count > maxPos || s.vol > (maxVol + 0.0001),
+        overVol: s.vol > maxVol + 0.0001,
+        overflow: s.overflow || s.count > maxPos || s.vol > maxVol + 0.0001,
       });
     });
   });
@@ -190,16 +163,25 @@ function deepClone(obj: any) {
 }
 
 function defaultForFac(fac: string) {
-  const def = DEFAULT_PARAMS[fac]
+  return DEFAULT_PARAMS[fac]
     ? deepClone(DEFAULT_PARAMS[fac])
     : { maxPos: 60, maxVol: 6, lineales: [`${fac}1`, `${fac}2`] };
-  return def;
+}
+
+/** Genera un array de nombres de lineales con la convención {fac}{N} */
+function generateLinealNames(fac: string, count: number, existing: string[]): string[] {
+  const names: string[] = [];
+  for (let i = 0; i < count; i++) {
+    // Preservar nombre custom si ya existía, si no, generar default
+    names.push(existing[i] !== undefined ? existing[i] : `${fac}${i + 1}`);
+  }
+  return names;
 }
 
 const HEADER_TABS: GlassHeaderTab[] = [
   { id: 'params', label: 'Parámetros', icon: '⚙️', badgeVariant: 'blue' },
   { id: 'results', label: 'Resultados', icon: '📊', badgeVariant: 'green' },
-]
+];
 
 // ─────────────────────────────────────────────────────────
 //  COMPONENTE PRINCIPAL
@@ -213,7 +195,7 @@ export default function AsignadorPreola() {
   const [colHeaders, setColHeaders] = useState<string[]>([]);
   const [params, setParams] = useState<any>(() => {
     try {
-      const c = localStorage.getItem("preola_params_v3");
+      const c = localStorage.getItem("preola_params_v4");
       return c ? JSON.parse(c) : deepClone(DEFAULT_PARAMS);
     } catch { return deepClone(DEFAULT_PARAMS); }
   });
@@ -222,12 +204,13 @@ export default function AsignadorPreola() {
   const [expandedFacs, setExpandedFacs] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<"params" | "results">("params");
 
-  const [globalAsignacion, setGlobalAsignacion] = useState(() => localStorage.getItem("preola_asig") || "optimizado");
-  const [globalOverflow, setGlobalOverflow] = useState(() => localStorage.getItem("preola_over") || "optimizado");
+  // Único parámetro global de optimización
+  const [globalMode, setGlobalMode] = useState<"maxISOs" | "maxM3">(
+    () => (localStorage.getItem("preola_mode") as "maxISOs" | "maxM3") || "maxISOs"
+  );
 
-  useEffect(() => { localStorage.setItem("preola_params_v3", JSON.stringify(params)); }, [params]);
-  useEffect(() => { localStorage.setItem("preola_asig", globalAsignacion); }, [globalAsignacion]);
-  useEffect(() => { localStorage.setItem("preola_over", globalOverflow); }, [globalOverflow]);
+  useEffect(() => { localStorage.setItem("preola_params_v4", JSON.stringify(params)); }, [params]);
+  useEffect(() => { localStorage.setItem("preola_mode", globalMode); }, [globalMode]);
 
   // Facilities presentes en el archivo cargado
   const detectedFacilities = useMemo(() => {
@@ -249,7 +232,7 @@ export default function AsignadorPreola() {
     return p;
   }, [params, detectedFacilities]);
 
-  // Lista de facilities a mostrar (detectados si hay archivo, todos los defaults si no)
+  // Lista de facilities a mostrar
   const facilityList = detectedFacilities.length > 0
     ? detectedFacilities
     : Object.keys(DEFAULT_PARAMS).sort((a, b) => Number(a) - Number(b) || a.localeCompare(b));
@@ -285,7 +268,7 @@ export default function AsignadorPreola() {
 
   // ── Ejecución ────────────────────────────────────────────
   const handleRun = () => {
-    const result = runAssignment(rows, effectiveParams, globalAsignacion, globalOverflow);
+    const result = runAssignment(rows, effectiveParams, globalMode);
     setResults(result);
     setActiveTab("results");
   };
@@ -306,7 +289,6 @@ export default function AsignadorPreola() {
 
   const handleDownloadAsignacion = () => {
     if (!results) return;
-    // Sin encabezados: solo [ID_ORDEN, LINEAL]
     const aoa = Object.entries(results.assignmentMap).map(([id, lineal]) => [id, lineal]);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
@@ -331,19 +313,13 @@ export default function AsignadorPreola() {
     });
   };
 
-  const addLineal = (fac: string) => {
+  /** Cambia la CANTIDAD de lineales regenerando el array */
+  const updateLinealCount = (fac: string, count: number) => {
+    if (count < 1 || count > 20) return;
     setParams((prev: any) => {
       const current = prev[fac] || defaultForFac(fac);
-      const n = current.lineales.length + 1;
-      return { ...prev, [fac]: { ...current, lineales: [...current.lineales, `${fac}${n}`] } };
-    });
-  };
-
-  const removeLineal = (fac: string) => {
-    setParams((prev: any) => {
-      const current = prev[fac] || defaultForFac(fac);
-      if (current.lineales.length <= 1) return prev;
-      return { ...prev, [fac]: { ...current, lineales: current.lineales.slice(0, -1) } };
+      const newLineales = generateLinealNames(fac, count, current.lineales);
+      return { ...prev, [fac]: { ...current, lineales: newLineales } };
     });
   };
 
@@ -368,7 +344,7 @@ export default function AsignadorPreola() {
   // ────────────────────────────────────────────────────────
   return (
     <PageShell>
-      <GlassHeader 
+      <GlassHeader
         appName="Asignador PREOLA"
         icon="📦"
         tabs={HEADER_TABS}
@@ -379,16 +355,15 @@ export default function AsignadorPreola() {
           results: (results && results.summaryData) ? results.summaryData.filter((r: any) => r.isos > 0).length : 0
         }}
         severities={{
-          results: (results && results.summaryData.some((r:any) => r.overflow)) ? 'high' : 'none'
+          results: (results && results.summaryData.some((r: any) => r.overflow)) ? 'high' : 'none'
         }}
       />
 
       <div className="flex-1 overflow-hidden" style={{ background: TC.bg }}>
-        <div 
+        <div
           className="h-full overflow-y-auto p-5"
           style={{ fontFamily: "'IBM Plex Mono', 'Consolas', monospace" }}
         >
-          {/* Omitimos su Header manual en favor de GlassHeader, pero dejamos el UI inner idéntico */}
           {file && (
             <div className="text-right mb-4">
               <div className="text-xs text-gray-400">{file.name}</div>
@@ -401,17 +376,16 @@ export default function AsignadorPreola() {
           <div className="grid grid-cols-1 xl:grid-cols-4 gap-5">
             {/* ── COLUMNA IZQUIERDA ── */}
             <div className="xl:col-span-1 space-y-4">
-              {/* Upload */}
               {/* Upload Card */}
-              <Card 
+              <Card
                 onClick={() => document.getElementById("preola-file-input")?.click()}
-                style={{ 
+                style={{
                   padding: '24px', textAlign: 'center', cursor: 'pointer',
                   border: dragging ? `2px dashed ${C.blue}` : `1px dashed ${C.border}`,
                   background: dragging ? 'rgba(56,139,253,0.05)' : undefined,
                   transition: 'all 0.2s'
                 }}
-                onDragOver={(e:any) => { e.preventDefault(); setDragging(true); }}
+                onDragOver={(e: any) => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={handleDrop}
               >
@@ -445,7 +419,7 @@ export default function AsignadorPreola() {
                 <Btn
                   variant="primary"
                   onClick={handleRun}
-                  style={{ 
+                  style={{
                     width: '100%', padding: '14px', fontSize: '14px', fontWeight: 900,
                     background: 'linear-gradient(135deg, #ffda1a, #e6c200)',
                     color: '#000',
@@ -476,7 +450,7 @@ export default function AsignadorPreola() {
                 </div>
               )}
 
-              {/* Summary stats cards */}
+              {/* Summary stats */}
               {summaryStats && (
                 <div className="space-y-2">
                   <StatCard label="Órdenes asignadas" value={summaryStats.total} color="yellow" />
@@ -492,38 +466,80 @@ export default function AsignadorPreola() {
 
             {/* ── COLUMNA DERECHA ── */}
             <div className="xl:col-span-3 space-y-4">
-              {/* Ocultamos las pestañas nativas de ellos en favor del GlassHeader ya usado arriba, pero ruteamos la vista aquí */}
-              {/* {activeTab === "..."} */}
 
               {/* ── TAB PARÁMETROS ── */}
               {activeTab === "params" && (
                 <>
+                  {/* Selector único de modo */}
                   <Card style={{ marginBottom: '16px', padding: '16px' }}>
                     <div style={{ color: TC.textFaint, fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px', fontWeight: 'bold' }}>
-                      Estrategia Global de Asignación
+                      Estrategia de Optimización
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <ParamSelect 
-                        label="Asignación Regular"
-                        value={globalAsignacion}
-                        options={[
-                          { value: "optimizado", label: "Optimizado" },
-                          { value: "balanceado", label: "Balanceado" }
-                        ]}
-                        onChange={(v: string) => setGlobalAsignacion(v)}
-                      />
-                      <ParamSelect 
-                        label="Caso Overflow"
-                        value={globalOverflow}
-                        options={[
-                          { value: "optimizado", label: "Optimizado" },
-                          { value: "balanceado", label: "Balancear" }
-                        ]}
-                        onChange={(v: string) => setGlobalOverflow(v)}
-                      />
+                      {/* Botón Maximizar ISOs */}
+                      <button
+                        onClick={() => setGlobalMode("maxISOs")}
+                        style={{
+                          padding: '14px 12px',
+                          borderRadius: '8px',
+                          border: globalMode === "maxISOs"
+                            ? `2px solid ${C.blue}`
+                            : `1px solid ${TC.borderSoft}`,
+                          background: globalMode === "maxISOs"
+                            ? `${C.blue}15`
+                            : TC.bgCard,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        <div style={{ fontSize: '18px', marginBottom: '4px' }}>📦</div>
+                        <div style={{ fontWeight: 'bold', fontSize: '12px', color: globalMode === "maxISOs" ? C.blue : TC.text }}>
+                          Maximizar ISOs
+                        </div>
+                        <div style={{ fontSize: '10px', color: TC.textFaint, marginTop: '2px', lineHeight: '1.4' }}>
+                          Órdenes pequeñas primero. Llena la mayor cantidad de ISOs posibles.
+                        </div>
+                      </button>
+
+                      {/* Botón Maximizar m³ */}
+                      <button
+                        onClick={() => setGlobalMode("maxM3")}
+                        style={{
+                          padding: '14px 12px',
+                          borderRadius: '8px',
+                          border: globalMode === "maxM3"
+                            ? `2px solid ${C.orange}`
+                            : `1px solid ${TC.borderSoft}`,
+                          background: globalMode === "maxM3"
+                            ? `${C.orange}15`
+                            : TC.bgCard,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        <div style={{ fontSize: '18px', marginBottom: '4px' }}>📐</div>
+                        <div style={{ fontWeight: 'bold', fontSize: '12px', color: globalMode === "maxM3" ? C.orange : TC.text }}>
+                          Maximizar m³
+                        </div>
+                        <div style={{ fontSize: '10px', color: TC.textFaint, marginTop: '2px', lineHeight: '1.4' }}>
+                          Órdenes grandes primero. Aprovecha el volumen total disponible.
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Nota sobre overflow */}
+                    <div style={{
+                      marginTop: '12px', padding: '8px 12px', borderRadius: '6px',
+                      background: 'rgba(227,179,65,0.08)', border: '1px solid rgba(227,179,65,0.25)',
+                      fontSize: '10px', color: TC.textMuted, lineHeight: '1.5'
+                    }}>
+                      ⚡ <strong>Overflow automático:</strong> cuando los lineales se llenan, los excedentes se distribuyen entre todos los lineales del facility priorizando el de menor m³ acumulado — garantizando un balance justo.
                     </div>
                   </Card>
 
+                  {/* Lista de facilities */}
                   <Card style={{ padding: 0, overflow: 'hidden' }}>
                     <div style={{ padding: '12px 16px', borderBottom: `1px solid ${TC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '12px', color: TC.textMuted, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
@@ -534,103 +550,189 @@ export default function AsignadorPreola() {
                       </span>
                     </div>
                     <div className="divide-y max-h-[520px] overflow-y-auto custom-scrollbar" style={{ borderColor: TC.border }}>
-                    {facilityList.map((fac) => {
-                      const p = effectiveParams[fac] || defaultForFac(fac);
-                      const isOpen = expandedFacs[fac];
-                      const isDetected = detectedFacilities.includes(fac);
-                      return (
-                        <div key={fac}>
-                          {/* Row header */}
-                          <button
-                            onClick={() => toggleFac(fac)}
-                            style={{ width: '100%', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'background 0.2s', borderBottom: `1px solid ${TC.border}` }}
-                            onMouseOver={(e) => e.currentTarget.style.background = TC.bgHover}
-                            onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                          >
-                            <div className="flex items-center gap-3">
-                              <span
-                                style={{
-                                  fontFamily: 'monospace', fontWeight: 'bold', fontSize: '14px',
-                                  color: isDetected ? C.orange : TC.textMuted
-                                }}
-                              >
-                                {fac}
-                              </span>
-                              {isDetected && (
-                                <span style={{ fontSize: '10px', background: `${C.orange}20`, color: C.orange, border: `1px solid ${C.orange}40`, padding: '2px 6px', borderRadius: '4px' }}>
-                                  EN ARCHIVO
+                      {facilityList.map((fac) => {
+                        const p = effectiveParams[fac] || defaultForFac(fac);
+                        const isOpen = expandedFacs[fac];
+                        const isDetected = detectedFacilities.includes(fac);
+                        const linealCount = p.lineales.length;
+
+                        return (
+                          <div key={fac}>
+                            {/* Row header */}
+                            <button
+                              onClick={() => toggleFac(fac)}
+                              style={{ width: '100%', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', transition: 'background 0.2s', borderBottom: `1px solid ${TC.border}` }}
+                              onMouseOver={(e) => e.currentTarget.style.background = TC.bgHover}
+                              onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '14px', color: isDetected ? C.orange : TC.textMuted }}>
+                                  {fac}
                                 </span>
-                              )}
-                              <span style={{ fontSize: '12px', color: TC.textFaint }}>
-                                {p.lineales.length} lineal{p.lineales.length !== 1 ? "es" : ""} ·{" "}
-                                Max {p.maxPos} ISO · Max {p.maxVol} m³
-                              </span>
-                            </div>
-                            <span style={{ color: TC.textFaint, fontSize: '12px' }}>
-                              {isOpen ? "▲" : "▼"}
-                            </span>
-                          </button>
-
-                          {/* Expanded edit panel */}
-                          {isOpen && (
-                            <div style={{ padding: '0 16px 16px 16px', background: TC.bgCardAlt, borderBottom: `1px solid ${TC.border}` }}>
-                              <div className="grid grid-cols-2 gap-3 mt-3">
-                                <ParamInput
-                                  label="Max ISOs por lineal"
-                                  value={p.maxPos}
-                                  type="number"
-                                  onChange={(v: any) => updateParam(fac, "maxPos", Number(v))}
-                                />
-                                <ParamInput
-                                  label="Max Volumen m³ por lineal"
-                                  value={p.maxVol}
-                                  type="number"
-                                  step="0.1"
-                                  onChange={(v: any) => updateParam(fac, "maxVol", Number(v))}
-                                />
-                              </div>
-
-                              {/* Lineales */}
-                              <div className="mt-3">
-                                <div className="flex items-center justify-between mb-2 mt-4">
-                                  <span style={{ fontSize: '10px', color: TC.textFaint, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                                    Lineales ({p.lineales.length})
+                                {isDetected && (
+                                  <span style={{ fontSize: '10px', background: `${C.orange}20`, color: C.orange, border: `1px solid ${C.orange}40`, padding: '2px 6px', borderRadius: '4px' }}>
+                                    EN ARCHIVO
                                   </span>
-                                  <div className="flex gap-1.5">
-                                    <button onClick={() => addLineal(fac)} style={{ fontSize: '11px', background: `${C.blue}20`, border: `1px solid ${C.blue}40`, color: C.blue, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}>+ Agregar</button>
-                                    <button onClick={() => removeLineal(fac)} style={{ fontSize: '11px', background: `${C.red}20`, border: `1px solid ${C.red}40`, color: C.red, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}>− Eliminar</button>
-                                    <button onClick={() => resetFac(fac)} style={{ fontSize: '11px', background: `${TC.textFaint}20`, border: `1px solid ${TC.textFaint}40`, color: TC.textFaint, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}>↺ Reset</button>
-                                  </div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                  {p.lineales.map((l: string, i: number) => (
-                                    <div key={i} className="flex flex-col items-center gap-0.5">
-                                      <span style={{ fontSize: '9px', color: TC.textMuted }}>L{i + 1}</span>
-                                      <input
-                                        value={l}
-                                        onChange={(e) => updateLinealName(fac, i, e.target.value)}
-                                        style={{ border: `1px solid ${TC.borderSoft}`, background: TC.bgCard, borderRadius: '4px', padding: '4px 8px', fontSize: '12px', fontFamily: 'monospace', width: '80px', textAlign: 'center', color: TC.text, outline: 'none' }}
-                                      />
-                                    </div>
+                                )}
+                                {/* Pill de lineales con nombre del facility + número */}
+                                <div className="flex gap-1">
+                                  {p.lineales.map((_l: string, li: number) => (
+                                    <span
+                                      key={li}
+                                      style={{
+                                        fontSize: '9px', fontFamily: 'monospace',
+                                        background: `${C.blue}15`, color: C.blue,
+                                        border: `1px solid ${C.blue}30`,
+                                        padding: '1px 5px', borderRadius: '3px'
+                                      }}
+                                    >
+                                      {fac} {li + 1}
+                                    </span>
                                   ))}
                                 </div>
+                                <span style={{ fontSize: '12px', color: TC.textFaint }}>
+                                  Max {p.maxPos} ISO · Max {p.maxVol} m³
+                                </span>
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
+                              <span style={{ color: TC.textFaint, fontSize: '12px' }}>
+                                {isOpen ? "▲" : "▼"}
+                              </span>
+                            </button>
+
+                            {/* Expanded edit panel */}
+                            {isOpen && (
+                              <div style={{ padding: '0 16px 16px 16px', background: TC.bgCardAlt, borderBottom: `1px solid ${TC.border}` }}>
+                                <div className="grid grid-cols-3 gap-3 mt-3">
+                                  <ParamInput
+                                    label="Max ISOs por lineal"
+                                    value={p.maxPos}
+                                    type="number"
+                                    onChange={(v: any) => updateParam(fac, "maxPos", Number(v))}
+                                  />
+                                  <ParamInput
+                                    label="Max Volumen m³ por lineal"
+                                    value={p.maxVol}
+                                    type="number"
+                                    step="0.1"
+                                    onChange={(v: any) => updateParam(fac, "maxVol", Number(v))}
+                                  />
+                                  {/* Nuevo: cantidad de lineales */}
+                                  <div>
+                                    <label className="text-[10px] text-gray-500 block mb-1 tracking-wider uppercase">
+                                      Cantidad de lineales
+                                    </label>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => updateLinealCount(fac, linealCount - 1)}
+                                        disabled={linealCount <= 1}
+                                        style={{
+                                          width: '28px', height: '32px', borderRadius: '6px',
+                                          border: `1px solid ${TC.borderSoft}`,
+                                          background: linealCount <= 1 ? TC.bgCardAlt : `${C.red}20`,
+                                          color: linealCount <= 1 ? TC.textFaint : C.red,
+                                          cursor: linealCount <= 1 ? 'not-allowed' : 'pointer',
+                                          fontSize: '16px', fontWeight: 'bold',
+                                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                          flexShrink: 0
+                                        }}
+                                      >−</button>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        max={20}
+                                        value={linealCount}
+                                        onChange={(e) => updateLinealCount(fac, Number(e.target.value))}
+                                        style={{
+                                          width: '44px', textAlign: 'center',
+                                          border: `1px solid ${TC.borderSoft}`, background: TC.bgCard,
+                                          borderRadius: '6px', padding: '4px 6px',
+                                          fontSize: '14px', fontFamily: 'monospace',
+                                          color: TC.text, fontWeight: 'bold', outline: 'none'
+                                        }}
+                                      />
+                                      <button
+                                        onClick={() => updateLinealCount(fac, linealCount + 1)}
+                                        disabled={linealCount >= 20}
+                                        style={{
+                                          width: '28px', height: '32px', borderRadius: '6px',
+                                          border: `1px solid ${TC.borderSoft}`,
+                                          background: linealCount >= 20 ? TC.bgCardAlt : `${C.blue}20`,
+                                          color: linealCount >= 20 ? TC.textFaint : C.blue,
+                                          cursor: linealCount >= 20 ? 'not-allowed' : 'pointer',
+                                          fontSize: '16px', fontWeight: 'bold',
+                                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                          flexShrink: 0
+                                        }}
+                                      >+</button>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Lineales individuales */}
+                                <div className="mt-4">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span style={{ fontSize: '10px', color: TC.textFaint, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                                      Nombres de Lineales
+                                    </span>
+                                    <button
+                                      onClick={() => resetFac(fac)}
+                                      style={{ fontSize: '11px', background: `${TC.textFaint}20`, border: `1px solid ${TC.textFaint}40`, color: TC.textFaint, padding: '2px 8px', borderRadius: '4px', cursor: 'pointer' }}
+                                    >
+                                      ↺ Reset
+                                    </button>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {p.lineales.map((l: string, i: number) => (
+                                      <div key={i} className="flex flex-col items-center gap-0.5">
+                                        {/* Etiqueta estilo "FACILITY N" */}
+                                        <span style={{
+                                          fontSize: '9px', color: C.blue,
+                                          fontFamily: 'monospace', fontWeight: 'bold',
+                                          background: `${C.blue}15`, padding: '1px 5px',
+                                          borderRadius: '3px', letterSpacing: '0.05em'
+                                        }}>
+                                          {fac} {i + 1}
+                                        </span>
+                                        <input
+                                          value={l}
+                                          onChange={(e) => updateLinealName(fac, i, e.target.value)}
+                                          style={{
+                                            border: `1px solid ${TC.borderSoft}`, background: TC.bgCard,
+                                            borderRadius: '4px', padding: '4px 8px',
+                                            fontSize: '12px', fontFamily: 'monospace',
+                                            width: '80px', textAlign: 'center',
+                                            color: TC.text, outline: 'none'
+                                          }}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
                 </>
               )}
 
               {/* ── TAB RESULTADOS ── */}
               {activeTab === "results" && results && (
                 <Card style={{ padding: 0 }}>
-                  <div className="px-4 py-3 border-b border-gray-800/50 background-white/5 backdrop-blur-md">
+                  <div className="px-4 py-3 border-b border-gray-800/50 background-white/5 backdrop-blur-md flex items-center justify-between">
                     <span className="text-xs text-gray-400 tracking-widest uppercase font-bold">
                       Resumen por Lineal
+                    </span>
+                    <span style={{
+                      fontSize: '10px', padding: '2px 8px', borderRadius: '4px',
+                      background: globalMode === "maxISOs" ? `${C.blue}20` : `${C.orange}20`,
+                      color: globalMode === "maxISOs" ? C.blue : C.orange,
+                      border: `1px solid ${globalMode === "maxISOs" ? C.blue : C.orange}40`,
+                      fontWeight: 'bold'
+                    }}>
+                      {globalMode === "maxISOs" ? "📦 Modo: Maximizar ISOs" : "📐 Modo: Maximizar m³"}
                     </span>
                   </div>
                   <div className="overflow-x-auto max-h-[520px] overflow-y-auto custom-scrollbar">
@@ -703,18 +805,21 @@ export default function AsignadorPreola() {
 //  SUB-COMPONENTES
 // ─────────────────────────────────────────────────────────
 function StatCard({ label, value, color }: { label: string, value: string | number, color: string }) {
-  const colors: Record<string, string> = {
-    yellow: "text-yellow-400 border-yellow-400/20 bg-yellow-400/5",
-    blue:   "text-blue-400   border-blue-400/20   bg-blue-400/5",
-    green:  "text-green-400  border-green-400/20  bg-green-400/5",
-    red:    "text-red-400    border-red-400/20    bg-red-400/5",
+  const colorMap: Record<string, string> = {
+    yellow: '#e3b341',
+    blue:   C.blue,
+    green:  C.green,
+    red:    C.red,
   };
+  const clr = colorMap[color] || C.text;
   return (
-    <Card style={{ padding: '10px 14px', border: `1px solid ${colors[color]?.split(' border-')[1]?.split(' ')[0] || 'rgba(255,255,255,0.1)'}` }}>
-      <div className={`text-lg font-bold font-mono ${colors[color]?.split(" ")[0]}`}>
+    <Card style={{ padding: '10px 14px', border: `1px solid ${clr}30` }}>
+      <div style={{ fontSize: '18px', fontWeight: 'bold', fontFamily: 'monospace', color: clr }}>
         {value}
       </div>
-      <div className="text-[10px] text-gray-500 mt-0.5 uppercase tracking-wider font-semibold">{label}</div>
+      <div style={{ fontSize: '10px', color: 'rgba(156,163,175,1)', marginTop: '2px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>
+        {label}
+      </div>
     </Card>
   );
 }
@@ -736,32 +841,13 @@ function ParamInput({ label, value, type = "text", step, onChange }: any) {
   );
 }
 
-function ParamSelect({ label, value, options, onChange }: any) {
-  return (
-    <div>
-      <label className="text-[10px] text-gray-500 block mb-1 tracking-wider uppercase">
-        {label}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-white/10 bg-white/5 backdrop-blur-sm rounded-lg px-3 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-yellow-400/60 focus:ring-1 focus:ring-yellow-400/20 transition-all"
-      >
-        {options.map((o: any) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 function MiniBar({ pct, over }: { pct: number, over: boolean }) {
   return (
     <div className="flex items-center gap-1.5">
       <div className="flex-1 bg-gray-800 rounded-full h-1.5 overflow-hidden">
         <div
           style={{ width: `${Math.min(pct, 100)}%` }}
-          className={`h-full rounded-full transition-all ${ over ? "bg-red-500" : pct > 80 ? "bg-yellow-400" : "bg-green-500" }`}
+          className={`h-full rounded-full transition-all ${over ? "bg-red-500" : pct > 80 ? "bg-yellow-400" : "bg-green-500"}`}
         />
       </div>
       <span className={`text-[10px] font-mono w-8 text-right ${over ? "text-red-400" : "text-gray-500"}`}>
