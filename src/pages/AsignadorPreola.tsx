@@ -80,7 +80,7 @@ function runAssignment(rows: any[], params: any, mode: "maxISOs" | "maxM3") {
     const linealStats: Record<string, { count: number; vol: number; overflow: boolean }> = {};
     lineales.forEach((l: string) => { linealStats[l] = { count: 0, vol: 0, overflow: false }; });
 
-    // ── Fase 2: asignación secuencial (llenado lineal) ─
+    // ── Fase 2: asignación ──────────────────────────
     let currentIdx = 0;
     const overflowOrders: { order: any; vol: number; orderId: string }[] = [];
 
@@ -89,20 +89,51 @@ function runAssignment(rows: any[], params: any, mode: "maxISOs" | "maxM3") {
       const orderId = String(order.ID_ORDEN ?? order.id_orden ?? "");
       let assigned = false;
 
-      // Intentar desde el lineal actual hacia adelante
-      while (currentIdx < N) {
-        const lName = lineales[currentIdx];
-        const st = linealStats[lName];
-        const fits = (st.count + 1) <= maxPos && (st.vol + vol) <= maxVol + 0.0001;
-        if (fits) {
+      if (fac === "9634") {
+        // Lógica para VAL (9634): Llenado secuencial lineal
+        while (currentIdx < N) {
+          const lName = lineales[currentIdx];
+          const st = linealStats[lName];
+          const fits = (st.count + 1) <= maxPos && (st.vol + vol) <= maxVol + 0.0001;
+          if (fits) {
+            assignmentMap[orderId] = lName;
+            st.count++;
+            st.vol += vol;
+            assigned = true;
+            break;
+          } else {
+            currentIdx++;
+          }
+        }
+      } else {
+        // Lógica para otros: Balanceado (miti-miti) por ISOs y Volumen
+        let bestIdx = -1;
+        let minCount = Infinity;
+        let minVolCurrent = Infinity;
+
+        for (let i = 0; i < N; i++) {
+          const lName = lineales[i];
+          const st = linealStats[lName];
+          const fits = (st.count + 1) <= maxPos && (st.vol + vol) <= maxVol + 0.0001;
+          if (fits) {
+            if (st.count < minCount) {
+              minCount = st.count;
+              minVolCurrent = st.vol;
+              bestIdx = i;
+            } else if (st.count === minCount && st.vol < minVolCurrent) {
+              minVolCurrent = st.vol;
+              bestIdx = i;
+            }
+          }
+        }
+
+        if (bestIdx !== -1) {
+          const lName = lineales[bestIdx];
+          const st = linealStats[lName];
           assignmentMap[orderId] = lName;
           st.count++;
           st.vol += vol;
           assigned = true;
-          break;
-        } else {
-          // Lineal lleno → avanzar
-          currentIdx++;
         }
       }
 
