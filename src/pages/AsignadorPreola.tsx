@@ -40,7 +40,7 @@ const DEFAULT_PARAMS: Record<string, any> = {
 //        "maxM3"   → ordena vol DESC para maximizar m³
 //  Overflow: greedy de mínimo m³ acumulado (balanceo real)
 // ─────────────────────────────────────────────────────────
-function runAssignment(rows: any[], params: any, mode: "maxISOs" | "maxM3") {
+function runAssignment(rows: any[], params: any) {
   // Agrupar por FACILITY
   const byFacility: Record<string, any[]> = {};
   rows.forEach((row) => {
@@ -60,20 +60,20 @@ function runAssignment(rows: any[], params: any, mode: "maxISOs" | "maxM3") {
     const maxVol = Number(p.maxVol) || 6;
     const N = lineales.length;
 
-    // ── Fase 1: ordenar según modo ─────────────────────
-    // Base: ROUTE_TO ASC, ID_ORDEN ASC (mantiene agrupación de rutas)
-    // Luego dentro de cada "slot" se prioriza por volumen según modo.
     const sorted = [...orders].sort((a, b) => {
       const rtA = String(a.ROUTE_TO ?? a.route_to ?? "");
       const rtB = String(b.ROUTE_TO ?? b.route_to ?? "");
       if (rtA < rtB) return -1;
       if (rtA > rtB) return 1;
-      // Dentro de la misma ruta, ordenar por volumen según modo
+      // Dentro de la misma ruta, ordenar por volumen según el tipo de facility
       const volA = parseFloat(a.VOLUMEN_M3 ?? a.volumen_m3 ?? 0) || 0;
       const volB = parseFloat(b.VOLUMEN_M3 ?? b.volumen_m3 ?? 0) || 0;
-      if (mode === "maxISOs") return volA - volB; // volumen ASC → caben más órdenes pequeñas
-      if (mode === "maxM3")   return volB - volA; // volumen DESC → maximizar m³ usados
-      return 0;
+      
+      if (fac === "9634") {
+        return volB - volA; // VAL: maximizar (objetos grandes primero)
+      } else {
+        return volA - volB; // Otros: balancear (objetos pequeños primero)
+      }
     });
 
     // ── Inicializar stats por lineal ───────────────────
@@ -239,17 +239,10 @@ export default function AsignadorPreola() {
     } catch { return deepClone(DEFAULT_PARAMS); }
   });
   const [results, setResults] = useState<any>(null);
-  const [dragging, setDragging] = useState(false);
   const [expandedFacs, setExpandedFacs] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<"params" | "results">("params");
 
-  // Único parámetro global de optimización
-  const [globalMode, setGlobalMode] = useState<"maxISOs" | "maxM3">(
-    () => (localStorage.getItem("preola_mode") as "maxISOs" | "maxM3") || "maxISOs"
-  );
-
   useEffect(() => { localStorage.setItem("preola_params_v5", JSON.stringify(params)); }, [params]);
-  useEffect(() => { localStorage.setItem("preola_mode", globalMode); }, [globalMode]);
 
   // Facilities presentes en el archivo cargado
   const detectedFacilities = useMemo(() => {
@@ -307,7 +300,7 @@ export default function AsignadorPreola() {
 
   // ── Ejecución ────────────────────────────────────────────
   const handleRun = () => {
-    const result = runAssignment(rows, effectiveParams, globalMode);
+    const result = runAssignment(rows, effectiveParams);
     setResults(result);
     setActiveTab("results");
   };
@@ -519,74 +512,7 @@ export default function AsignadorPreola() {
               {/* ── TAB PARÁMETROS ── */}
               {activeTab === "params" && (
                 <>
-                  {/* Selector único de modo */}
-                  <Card style={{ marginBottom: '16px', padding: '16px' }}>
-                    <div style={{ color: TC.textFaint, fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px', fontWeight: 'bold' }}>
-                      Estrategia de Optimización
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Botón Maximizar ISOs */}
-                      <button
-                        onClick={() => setGlobalMode("maxISOs")}
-                        style={{
-                          padding: '14px 12px',
-                          borderRadius: '8px',
-                          border: globalMode === "maxISOs"
-                            ? `2px solid ${C.blue}`
-                            : `1px solid ${TC.borderSoft}`,
-                          background: globalMode === "maxISOs"
-                            ? `${C.blue}15`
-                            : TC.bgCard,
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        <div style={{ fontSize: '18px', marginBottom: '4px' }}>📦</div>
-                        <div style={{ fontWeight: 'bold', fontSize: '12px', color: globalMode === "maxISOs" ? C.blue : TC.text }}>
-                          Maximizar ISOs
-                        </div>
-                        <div style={{ fontSize: '10px', color: TC.textFaint, marginTop: '2px', lineHeight: '1.4' }}>
-                          Órdenes pequeñas primero. Llena la mayor cantidad de ISOs posibles.
-                        </div>
-                      </button>
 
-                      {/* Botón Maximizar m³ */}
-                      <button
-                        onClick={() => setGlobalMode("maxM3")}
-                        style={{
-                          padding: '14px 12px',
-                          borderRadius: '8px',
-                          border: globalMode === "maxM3"
-                            ? `2px solid ${C.orange}`
-                            : `1px solid ${TC.borderSoft}`,
-                          background: globalMode === "maxM3"
-                            ? `${C.orange}15`
-                            : TC.bgCard,
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'all 0.2s',
-                        }}
-                      >
-                        <div style={{ fontSize: '18px', marginBottom: '4px' }}>📐</div>
-                        <div style={{ fontWeight: 'bold', fontSize: '12px', color: globalMode === "maxM3" ? C.orange : TC.text }}>
-                          Maximizar m³
-                        </div>
-                        <div style={{ fontSize: '10px', color: TC.textFaint, marginTop: '2px', lineHeight: '1.4' }}>
-                          Órdenes grandes primero. Aprovecha el volumen total disponible.
-                        </div>
-                      </button>
-                    </div>
-
-                    {/* Nota sobre overflow */}
-                    <div style={{
-                      marginTop: '12px', padding: '8px 12px', borderRadius: '6px',
-                      background: 'rgba(227,179,65,0.08)', border: '1px solid rgba(227,179,65,0.25)',
-                      fontSize: '10px', color: TC.textMuted, lineHeight: '1.5'
-                    }}>
-                      ⚡ <strong>Overflow automático:</strong> cuando los lineales se llenan, los excedentes se distribuyen entre todos los lineales del facility priorizando el de menor m³ acumulado — garantizando un balance justo.
-                    </div>
-                  </Card>
 
                   {/* Lista de facilities */}
                   <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -816,15 +742,6 @@ export default function AsignadorPreola() {
                   <div className="px-4 py-3 border-b border-gray-800/50 background-white/5 backdrop-blur-md flex items-center justify-between">
                     <span className="text-xs text-gray-400 tracking-widest uppercase font-bold">
                       Resumen por Lineal
-                    </span>
-                    <span style={{
-                      fontSize: '10px', padding: '2px 8px', borderRadius: '4px',
-                      background: globalMode === "maxISOs" ? `${C.blue}20` : `${C.orange}20`,
-                      color: globalMode === "maxISOs" ? C.blue : C.orange,
-                      border: `1px solid ${globalMode === "maxISOs" ? C.blue : C.orange}40`,
-                      fontWeight: 'bold'
-                    }}>
-                      {globalMode === "maxISOs" ? "📦 Modo: Maximizar ISOs" : "📐 Modo: Maximizar m³"}
                     </span>
                   </div>
                   <div className="overflow-x-auto max-h-[520px] overflow-y-auto custom-scrollbar">
