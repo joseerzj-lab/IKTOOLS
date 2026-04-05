@@ -1,11 +1,12 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { Search, Columns3, Plus, Trash2, Filter, ArrowDownAZ, ArrowUpZA, FileDown, FileSpreadsheet, Image as ImageIcon, ClipboardCopy, FileJson } from 'lucide-react'
 import { DropdownMenu } from '../ui/dropdown-menu'
 import { exportElementAsImage } from '../../utils/exportUtils'
 import type { Row, Stats } from './types'
 import { useTheme, getThemeColors } from '../../context/ThemeContext'
-import { Btn } from '../../ui/DS'
+import { Btn, Card } from '../../ui/DS'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface Props {
 // ... (rest of props)
@@ -45,10 +46,89 @@ export default function TabDashboard({
   const [showReplace, setShowReplace] = useState(false)
   const [replaceText, setReplaceText] = useState('')
   
-  // -- Excel-like filters (filter menu UI state stays local)
+  // -- Excel-like filters & Sorting state
   const [activeFilterCol, setActiveFilterCol] = useState<string | null>(null)
   const [filterSearch, setFilterSearch] = useState('')
   const filterMenuRef = useRef<HTMLDivElement>(null)
+
+  // -- Stable Filtered Rows (Excel Behavior)
+  const [displayRows, setDisplayRows] = useState<Row[]>([])
+  const [isStale, setIsStale] = useState(false)
+
+  const getFilteredAndSorted = useCallback((sourceRows: Row[]) => {
+    let result = [...sourceRows]
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter(r => columns.some(c => (r[c] || '').toLowerCase().includes(q)))
+    }
+    
+    Object.entries(colFilters).forEach(([col, allowedValues]) => {
+      if (allowedValues.size > 0) {
+        result = result.filter(r => allowedValues.has(r[col] || ''))
+      }
+    })
+    
+    if (sortCol) {
+      result.sort((a, b) => {
+        const valA = (a[sortCol.col] || '').toLowerCase()
+        const valB = (b[sortCol.col] || '').toLowerCase()
+        if (valA < valB) return sortCol.dir === 'asc' ? -1 : 1
+        if (valA > valB) return sortCol.dir === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+    return result
+  }, [search, colFilters, sortCol, columns])
+
+  // Sync displayRows when filters/sort change OR when row count changes
+  useEffect(() => {
+    setDisplayRows(getFilteredAndSorted(rows))
+    setIsStale(false)
+  }, [getFilteredAndSorted, rows.length])
+
+  // If rows change (cell edit), we update the values in displayRows but don't re-filter
+  useEffect(() => {
+    setDisplayRows(prev => {
+      return prev.map(pr => {
+        const matchingRow = rows.find(r => r === pr) // This works if we keep object refs
+        if (matchingRow) return matchingRow
+        // Fallback: finding by ISO if refs broke
+        const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
+        const found = rows.find(r => r[isoCol] === pr[isoCol])
+        return found || pr
+      })
+    })
+    
+    // Check if it should be stale
+    const fresh = getFilteredAndSorted(rows)
+    if (fresh.length !== displayRows.length) {
+      setIsStale(true)
+    } else {
+      // Check if order or content changed enough to be considered "different" from filter perspective
+      // But we don't want to be TOO aggressive. 
+      // If the user edited a filtered field, it's stale.
+      setIsStale(true) // For now, any change makes it "potentially stale" but visually stable
+    }
+  }, [rows])
+
+  const refreshFilters = () => {
+    setDisplayRows(getFilteredAndSorted(rows))
+    setIsStale(false)
+    onNotify('✓ Tabla actualizada')
+  }
+
+  // -- Gestiones logic
+  const [showK8Modal, setShowK8Modal] = useState<Row[] | null>(null)
+  const [k8GestionType, setK8GestionType] = useState('K8 REGULAR')
+
+  const recognizeGestion = (row: any) => {
+    const text = JSON.stringify(row).toUpperCase()
+    if (text.includes('RETIRO') && text.includes('ENVIO')) return 'ENVIO Y RETIRO'
+    if (text.includes('RETIRO')) return 'RETIRO'
+    if (text.includes('REPITE')) return 'REPITE'
+    if (text.includes('K8')) return 'K8'
+    return ''
+  }
 
   // -- Cell Selection
   const [selection, setSelection] = useState<{ start: {r: number, c: number} | null, end: {r: number, c: number} | null }>({ start: null, end: null })
@@ -68,7 +148,6 @@ export default function TabDashboard({
   const handleMouseUp = () => {
     setIsDragging(false)
   }
-
   // Handle Ctrl+C and Ctrl+V for selection
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
@@ -86,7 +165,7 @@ export default function TabDashboard({
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
            if (e.shiftKey) {
              e.preventDefault()
-             const currentRows = getFilteredAndSorted()
+             const currentRows = getFilteredAndSorted(rows)
              const vCols = columns.filter(c => visibleCols.has(c))
              let currentR = selection.end.r
              let currentC = selection.end.c
@@ -102,7 +181,7 @@ export default function TabDashboard({
              return
            } else if (isMultipleSelected) {
              e.preventDefault()
-             const currentRows = getFilteredAndSorted()
+             const currentRows = getFilteredAndSorted(rows)
              const vCols = columns.filter(c => visibleCols.has(c))
              let currentR = selection.end.r
              let currentC = selection.end.c
@@ -126,7 +205,7 @@ export default function TabDashboard({
            e.preventDefault()
            const vCols = columns.filter(c => visibleCols.has(c))
            const textRows = []
-           const currentRows = getFilteredAndSorted()
+           const currentRows = getFilteredAndSorted(rows)
            
            for (let i = rMin; i <= rMax; i++) {
                const rowText = []
@@ -155,16 +234,18 @@ export default function TabDashboard({
             if (isMultipleSelected || isTabularData) {
                 e.preventDefault()
                 const vCols = columns.filter(c => visibleCols.has(c))
-                const currentRows = getFilteredAndSorted()
                 const pasteRows = text.replace(/\r?\n$/, '').split(/\r?\n/).map(r => r.split('\t'))
                 
                 const newRows = [...rows]
                 let updatedCount = 0
+                let detectedEnvioRetiro = false
+                let detectedK8 = false
+                const pastedIsos: string[] = []
 
                 if (pasteRows.length === 1 && pasteRows[0].length === 1 && isMultipleSelected) {
                     const val = pasteRows[0][0]
                     for (let i = rMin; i <= rMax; i++) {
-                        const rowObj = currentRows[i]
+                        const rowObj = displayRows[i]
                         if (!rowObj) continue
                         const originalIdx = rows.findIndex(r => r === rowObj)
                         if (originalIdx >= 0) {
@@ -183,23 +264,51 @@ export default function TabDashboard({
                     }
                 } else if (pasteRows.length > 0) {
                     // Distribute tabular data
+                    const rowsToProcess: Row[] = []
                     for (let pr = 0; pr < pasteRows.length; pr++) {
-                        const targetRow = currentRows[rMin + pr]
+                        const targetRow = displayRows[rMin + pr]
                         if (!targetRow) continue
                         const originalIdx = rows.findIndex(r => r === targetRow)
                         if (originalIdx >= 0) {
+                            const updatedRow = { ...newRows[originalIdx] }
                             for (let pc = 0; pc < pasteRows[pr].length; pc++) {
                                 const colName = vCols[cMin + pc]
                                 if (colName && pasteRows[pr][pc] !== undefined) {
-                                    newRows[originalIdx] = { ...newRows[originalIdx], [colName]: pasteRows[pr][pc] }
-                                    updatedCount++
+                                  const val = pasteRows[pr][pc].trim().toUpperCase()
+                                  updatedRow[colName] = val
+                                  if (colName === 'ISO') pastedIsos.push(val)
+                                  updatedCount++
                                 }
                             }
+                            
+                            // Auto recognition of management
+                            if (!updatedRow['GESTIÓN']) {
+                              const autoG = recognizeGestion(updatedRow)
+                              if (autoG) {
+                                updatedRow['GESTIÓN'] = autoG
+                                if (autoG === 'ENVIO Y RETIRO') detectedEnvioRetiro = true
+                                if (autoG === 'K8') detectedK8 = true
+                              }
+                            } else {
+                               if (updatedRow['GESTIÓN'] === 'ENVIO Y RETIRO') detectedEnvioRetiro = true
+                               if (updatedRow['GESTIÓN'] === 'K8') detectedK8 = true
+                            }
+
+                            newRows[originalIdx] = updatedRow
+                            rowsToProcess.push(updatedRow)
                         }
                     }
                     if (updatedCount > 0) {
                        onUpdateRows(newRows)
-                       onNotify(`✓ ${updatedCount} celdas distribuidas desde tabla`)
+                       onNotify(`✓ ${updatedCount} celdas distribuidas`)
+                       
+                       if (detectedEnvioRetiro) {
+                         onNotify(`🚚 Envío y Retiro detectado. ISOs listas para cruce.`)
+                       }
+
+                       if (detectedK8) {
+                         setShowK8Modal(rowsToProcess)
+                       }
                     }
                 }
             }
@@ -215,7 +324,8 @@ export default function TabDashboard({
         window.removeEventListener('keydown', handleKeyDown)
         window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [selection, isDragging, columns, visibleCols, rows, search, colFilters, sortCol])
+  }, [selection, isDragging, columns, visibleCols, rows, search, colFilters, sortCol, displayRows])
+  
   
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -268,7 +378,7 @@ export default function TabDashboard({
   }
 
   const handleDuplicateRow = (filteredIdx: number) => {
-    const currentRows = getFilteredAndSorted()
+    const currentRows = getFilteredAndSorted(rows)
     const row = currentRows[filteredIdx]
     if (!row) return
     const originalIdx = rows.indexOf(row)
@@ -281,7 +391,7 @@ export default function TabDashboard({
 
   const handleCycleGestion = (filteredIdx: number) => {
     const gestions = ['REPITE', 'RETIRO', 'K8', 'ENVIO Y RETIRO', 'SOLO ENVIO', 'PROYECTO']
-    const currentRows = getFilteredAndSorted()
+    const currentRows = getFilteredAndSorted(rows)
     const row = currentRows[filteredIdx]
     if (!row) return
     const originalIdx = rows.indexOf(row)
@@ -291,33 +401,7 @@ export default function TabDashboard({
     onUpdateCell(originalIdx, 'GESTIÓN', gestions[nextIdx])
   }
 
-  const getFilteredAndSorted = () => {
-    let result = rows
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      result = result.filter(r => columns.some(c => (r[c] || '').toLowerCase().includes(q)))
-    }
-    
-    // Apply column filters
-    Object.entries(colFilters).forEach(([col, allowedValues]) => {
-      if (allowedValues.size > 0) {
-        result = result.filter(r => allowedValues.has(r[col] || ''))
-      }
-    })
-    
-    // Apply sorting
-    if (sortCol) {
-      result = [...result].sort((a, b) => {
-        const valA = (a[sortCol.col] || '').toLowerCase()
-        const valB = (b[sortCol.col] || '').toLowerCase()
-        if (valA < valB) return sortCol.dir === 'asc' ? -1 : 1
-        if (valA > valB) return sortCol.dir === 'asc' ? 1 : -1
-        return 0
-      })
-    }
-    
-    return result
-  }
+  // Reemplazado por getFilteredAndSorted con useCallback al inicio
 
   const exportToImage = async () => {
     const el = parentRef.current
@@ -332,7 +416,7 @@ export default function TabDashboard({
     if (!rows.length) return
     const vCols = columns.filter(c => visibleCols.has(c))
     let csv = vCols.join('\t') + '\n'
-    getFilteredAndSorted().forEach(r => {
+    getFilteredAndSorted(rows).forEach(r => {
       csv += vCols.map(c => String(r[c] || '').replace(/\t/g, ' ')).join('\t') + '\n'
     })
     const blob = new Blob(["\uFEFF"+csv], {type: 'text/csv;charset=utf-8;'})
@@ -347,7 +431,7 @@ export default function TabDashboard({
 
   const copiarLeslie = () => {
     const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
-    const isos = getFilteredAndSorted()
+    const isos = getFilteredAndSorted(rows)
       .filter(r => LESLIE_GESTIONES.has(String(r['GESTIÓN'] || '').trim().toUpperCase()))
       .map(r => String(r[isoCol] || '').trim())
       .filter(Boolean)
@@ -359,7 +443,7 @@ export default function TabDashboard({
 
   const copiarHD = () => {
     const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
-    const isos = getFilteredAndSorted()
+    const isos = getFilteredAndSorted(rows)
       .filter(r => !LESLIE_GESTIONES.has(String(r['GESTIÓN'] || '').trim().toUpperCase()))
       .map(r => String(r[isoCol] || '').trim())
       .filter(Boolean)
@@ -369,7 +453,7 @@ export default function TabDashboard({
       .catch(() => onNotify('⚠️ Error al copiar'))
   }
 
-  const filtered = getFilteredAndSorted()
+  const filtered = displayRows
   const vCols = columns.filter(c => visibleCols.has(c))
 
   const parentRef = useRef<HTMLDivElement>(null)
@@ -414,6 +498,27 @@ export default function TabDashboard({
               <span className="text-[9px] uppercase tracking-wider max-w-[70px] truncate" style={{ color: TC.textDisabled }} title={k}>{k}</span>
             </div>
           ))}
+          {isStale && (
+            <button 
+              onClick={refreshFilters}
+              className="ml-2 px-2 py-1 rounded bg-orange-500/10 border border-orange-500/30 text-[10px] font-bold text-orange-400 animate-pulse hover:bg-orange-500/20 transition-colors"
+            >
+              ⚠️ Re-aplicar Filtros (Excel Style)
+            </button>
+          )}
+          {rows.some(r => String(r['GESTIÓN'] || '').trim().toUpperCase() === 'ENVIO Y RETIRO') && (
+            <button 
+              onClick={() => {
+                const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
+                const isos = rows.filter(r => String(r['GESTIÓN'] || '').trim().toUpperCase() === 'ENVIO Y RETIRO').map(r => String(r[isoCol] || '').trim()).filter(Boolean)
+                navigator.clipboard.writeText(isos.join(', '))
+                  .then(() => onNotify(`✓ ${isos.length} ISOs de Envío y Retiro copiadas`))
+              }}
+              className="ml-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 text-[10px] font-bold text-blue-400 hover:bg-blue-500/20 transition-colors flex items-center gap-1"
+            >
+              <ClipboardCopy size={11} /> Copiar Envío y Retiro
+            </button>
+          )}
         </div>
       )}
 
@@ -797,6 +902,41 @@ export default function TabDashboard({
             <span style={{ color: TC.textSub }}>Vista: <strong className="text-yellow-500 font-mono">{filtered.length}</strong></span>
          </div>
       )}
+
+      {/* K8 Modal */}
+      <AnimatePresence>
+        {showK8Modal && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+          >
+            <Card className="w-full max-w-md p-8 relative overflow-hidden" style={{ background: TC.bgCard, borderColor: TC.borderSoft }}>
+              <h3 className="text-lg font-bold mb-2" style={{ color: TC.text }}>Gestión K8 Detectada</h3>
+              <p className="text-xs mb-6 opacity-60">Se han detectado {showK8Modal.length} ISO(s) con posible gestión K8. ¿Qué tipo de gestión deseas aplicar?</p>
+              
+              <div className="space-y-3 mb-8">
+                {['K8 REGULAR', 'K8 PROYECTOS', 'K8 POSTVENTA', 'PROYECTO SUELTO'].map(type => (
+                  <label key={type} className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${k8GestionType === type ? 'border-blue-500 bg-blue-500/10' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}>
+                    <span className="text-xs font-bold" style={{ color: k8GestionType === type ? '#38bdf8' : TC.text }}>{type}</span>
+                    <input type="radio" name="k8type" className="accent-blue-500" checked={k8GestionType === type} onChange={() => setK8GestionType(type)} />
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex gap-3">
+                <Btn variant="secondary" className="flex-1" onClick={() => setShowK8Modal(null)}>Cancelar</Btn>
+                <Btn variant="primary" className="flex-1" onClick={() => {
+                  const idsToUpdate = new Set(showK8Modal.map(r => rows.indexOf(r)).filter(i => i >= 0))
+                  const nextRows = rows.map((r, i) => idsToUpdate.has(i) ? { ...r, GESTIÓN: k8GestionType } : r)
+                  onUpdateRows(nextRows)
+                  setShowK8Modal(null)
+                  onNotify(`✓ ${idsToUpdate.size} ISOs actualizadas a ${k8GestionType}`)
+                }}>Aplicar a todos</Btn>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
