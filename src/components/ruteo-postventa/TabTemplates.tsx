@@ -180,7 +180,7 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
           + buildHTMLTable(dataK8, ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO'], true)
       }
 
-      // 4. Proyectos
+      // 4. Proyectos (from rows)
       const dataProy = sortData(rows.filter(r => {
         const cond = String(r.CONDUCTOR || '').trim()
         const iso = String(r.ISO || '').trim().toUpperCase()
@@ -198,6 +198,23 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
       if (dataProy.length) {
         sectionProy = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">Proyectos</p>`
           + buildHTMLTable(dataProy, ['ISO', 'DESTINO'], true)
+      }
+
+      // 4.1 Proyectos Leslie (from uploaded file)
+      let sectionLeslie = ''
+      if (proyectosData.length) {
+        const displayLeslie = sortData(proyectosData.filter(r => {
+          const iso = (r.ISO || "").trim().toUpperCase();
+          return iso !== 'INICIO' && iso !== 'FIN';
+        }).map(r => ({
+          ...r,
+          DESTINO: r.VEHÍCULO || r.VEHICULO || ''
+        })))
+        
+        if (displayLeslie.length) {
+          sectionLeslie = `<p style="font-family:Aptos,sans-serif;font-size:12pt;margin-top:16px;margin-bottom:8px;font-weight:bold;">Proyectos Leslie</p>`
+            + buildHTMLTable(displayLeslie, ['ISO', 'DESTINO'], true)
+        }
       }
 
       // 5. Corrección de Ruta (Refined filter)
@@ -228,8 +245,8 @@ const TabTemplates: React.FC<Props> = ({ rows, proyectosData, onNotify }) => {
           + buildHTMLTable(dataCorr, ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO'], true)
       }
 
-      html = intro + sectionRepites + sectionPV + sectionCorr + sectionK8 + sectionProy
-      plain = `Buenas tardes, comparto ruteos PM\n\nRepites...\nPostventa...\nCorrección de Ruta...\nK8...\nProyectos...`
+      html = intro + sectionRepites + sectionPV + sectionCorr + sectionK8 + sectionProy + sectionLeslie
+      plain = `Buenas tardes, comparto ruteos PM\n\nRepites...\nPostventa...\nCorrección de Ruta...\nK8...\nProyectos...\nProyectos Leslie...`
       title = 'Ruteo PM'
     }
 
