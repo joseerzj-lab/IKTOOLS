@@ -342,41 +342,74 @@ export default function RuteadorV9() {
         const normRows = mapNormalizedRows(xlRows)
         const keys = Object.keys(normRows[0])
         
-        const cTit = keys.find(k => k === "TITULO") || keys.find(k => k.includes("TITULO") || k.includes("ISO"))
-        const cDir = keys.find(k => k.includes("DIRECCI") || k.includes("DOMICILIO"))
-        const cCond = keys.find(k => k.includes("CONDUCTOR"))
+        // --- Mejor detección de columnas ---
+        const cTit = keys.find(k => 
+          k === "TITULO" || k === "TÍTULO" || k === "ISO" || k === "ORDEN" || k === "PEDIDO" ||
+          k.includes("TITULO") || k.includes("TÍTULO") || k.includes("ISO") || k.includes("ORDEN") || k.includes("PEDIDO")
+        )
+        const cDir = keys.find(k => 
+          k === "DIRECCION" || k === "DIRECCIÓN" || k === "DOMICILIO" || k === "UBICACION" || k === "UBICACIÓN" || k === "DESTINO" ||
+          k.includes("DIRECCI") || k.includes("DOMICILIO") || k.includes("UBICACI") || k.includes("DESTINO")
+        )
+        const cCond = keys.find(k => 
+          k === "CONDUCTOR" || k === "CHOFER" || k === "CHOFER/CONDUCTOR" || k === "TRANSPORTE" || k === "DRIVER" ||
+          k.includes("CONDUCTOR") || k.includes("CHOFER") || k.includes("DRIVER") || k.includes("TRANS")
+        )
 
-        if (!cTit || !cDir) return flash(`⚠️ Columnas no detectadas. Cols: ${keys.join(', ')}`)
+        // Fallback: si no detecta, usar una lógica de posicion si las columnas críticas faltan
+        let detectTit = cTit;
+        let detectDir = cDir;
+        if (!detectTit) {
+          detectTit = keys[0]; // Asumimos la primera columna como fallback (ej. ORDEN)
+        }
+        if (!detectDir) {
+          // Buscamos algo que parezca una dirección en las primeras 5 columnas
+          detectDir = keys.find((_, idx) => idx > 0 && idx < 5) || keys[1];
+        }
 
-        const hasAdicional = normRows.some(r => String(r[cCond || ''] || "").includes("PROYECTO"))
+        if (!detectTit || !detectDir) return flash(`⚠️ Columnas no detectadas. Cols: ${keys.join(', ')}`)
+
+        // --- Lógica de Filtrado de Chóferes Leslie ---
+        const hasLeslieKeyword = (val: string) => {
+          const u = String(val || "").toUpperCase();
+          return u.includes("FRANCISCO") || u.includes("LESLIE") || u.includes("PROYECTO") || u.includes("COMODIN");
+        };
+
+        const hasAdicional = normRows.some(r => {
+          const cond = String(r[cCond || ''] || "");
+          return cond.includes("ADICIONAL") || cond.includes("COMODIN") || cond.includes("EXTERNO");
+        });
 
         let formatted: any[] = []
-        if (hasAdicional) {
-          formatted = normRows.filter(r => {
-            const cond = String(r[cCond || ''] || "")
-            return cond.includes("FRANCISCO") || cond.includes("PROYECTO")
-          }).map(r => {
-            const cond = String(r[cCond || ''] || "")
-            const veh = cond.includes("FRANCISCO") ? "VEH98" : cond.includes("PROYECTO") ? "VEH98 Adicional" : ""
-            return {
-              _tipo: 'dos',
-              'VEHÍCULO': veh,
-              ISO: String(r[cTit] || ""),
-              DIRECCIÓN: String(r[cDir] || "")
-            }
-          })
-        } else {
-          formatted = normRows.filter(r => String(r[cCond || ''] || "").includes("FRANCISCO"))
-            .map(r => ({
-              _tipo: 'uno',
-              ISO: String(r[cTit] || ""),
-              DIRECCIÓN: String(r[cDir] || "")
-            }))
+        
+        // Filtramos solo las filas que corresponden a Leslie (driver name filter)
+        const leslieRows = normRows.filter(r => {
+          const cond = String(r[cCond || ''] || "");
+          const iso = String(r[detectTit || ''] || "").trim().toUpperCase();
+          if (iso === 'INICIO' || iso === 'FIN' || !iso || iso === 'ISO') return false;
+          return hasLeslieKeyword(cond);
+        });
+
+        if (leslieRows.length === 0) {
+           return flash('⚠️ No se detectaron conductores de Leslie en el archivo (Francisco, Leslie, Proyecto).');
         }
+
+        formatted = leslieRows.map(r => {
+          const cond = String(r[cCond || ''] || "").toUpperCase();
+          const isExtra = cond.includes("ADICIONAL") || cond.includes("COMODIN") || cond.includes("EXTERNO") || cond.includes("PROYECTOC");
+          const veh = isExtra ? "VEH98 Adicional" : "VEH98";
+          
+          return {
+            _tipo: hasAdicional ? 'dos' : 'uno',
+            'VEHÍCULO': veh,
+            ISO: String(r[detectTit || ''] || "").trim(),
+            DIRECCIÓN: String(r[detectDir || ''] || "").trim()
+          }
+        });
         
         setProyectosData(formatted)
         setProjectsName(file.name)
-        flash(`✓ ${formatted.length} proyectos Leslie cargados`)
+        flash(`✓ ${formatted.length} proyectos Leslie cargados (Detec: ${detectTit}/${detectDir})`)
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer proyectos') }
