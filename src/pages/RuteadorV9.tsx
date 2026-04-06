@@ -306,21 +306,28 @@ export default function RuteadorV9() {
         
         const normRows = mapNormalizedRows(xlRows)
         const keys = Object.keys(normRows[0])
-        const cTit = keys.find(k => k === "TITULO") || keys.find(k => k.includes("TITULO") || k.includes("ISO"))
-        const cVeh = keys.find(k => k === "VEHICULO" || k === "VEH") || keys.find(k => k.includes("VEHICULO"))
         
-        if (!cTit) return flash('⚠️ No se detectó columna ISO/Título')
+        // --- Mejor detección de columnas para Duplicados ---
+        const cTit = keys.find(k => k === "TITULO" || k === "ISO" || k.includes("TITULO") || k.includes("ISO"))
+        const cVeh = keys.find(k => 
+          k === "VEHICULO" || k === "VEH" || k === "PATENTE" || k === "CHOFER" || k === "CONDUCTOR" || k === "TRANSPORTE" ||
+          k.includes("VEHICULO") || k.includes("PATENTE") || k.includes("TRANS") || k.includes("CHOFER")
+        )
+        
+        if (!cTit) return flash('⚠️ No se detectó columna ISO/Título en el Plan')
+        if (!cVeh) return flash('⚠️ No se detectó columna de Vehículo/Transporte en el Plan')
         
         const pvRows = normRows.filter(r => {
-          const veh = String(r[cVeh || ''] || "")
-          return /^VEH01\s*POST\s*VENTA/.test(veh) || /^VEH01\s*POSTVENTA/.test(veh)
+          const veh = String(r[cVeh] || "").trim() // Case-insensitive because normRows is already uppercase
+          // Regex flexiblizado para detectar Postventa
+          return /VEH01.*POST.*VENTA/.test(veh) || /VEH01.*POSTVENTA/.test(veh)
         })
         
-        const isos = pvRows.map(r => String(r[cTit] || "")).filter(iso => iso && iso !== "INICIO" && iso !== "FIN")
+        const isos = pvRows.map(r => String(r[cTit] || "").trim()).filter(iso => iso && iso !== "INICIO" && iso !== "FIN")
 
         setPvPlanData(isos)
         setPvPlanName(file.name)
-        flash(`✓ ${isos.length} ISOs de Postventa cargadas para revisión de duplicados`)
+        flash(`✓ ${isos.length} ISOs de Postventa cargadas (Usando: ${cTit}/${cVeh})`)
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer el plan') }
@@ -342,74 +349,52 @@ export default function RuteadorV9() {
         const normRows = mapNormalizedRows(xlRows)
         const keys = Object.keys(normRows[0])
         
-        // --- Mejor detección de columnas ---
+        // --- Mejor detección de columnas con más alias ---
         const cTit = keys.find(k => 
-          k === "TITULO" || k === "TÍTULO" || k === "ISO" || k === "ORDEN" || k === "PEDIDO" ||
-          k.includes("TITULO") || k.includes("TÍTULO") || k.includes("ISO") || k.includes("ORDEN") || k.includes("PEDIDO")
+          k === "ISO" || k === "TITULO" || k === "ORDEN" || k === "PEDIDO" || k === "ORDEN DE VENTA" ||
+          k.includes("ISO") || k.includes("TITULO") || k.includes("ORDEN") || k.includes("ORD.") || k.includes("PEDIDO")
         )
         const cDir = keys.find(k => 
-          k === "DIRECCION" || k === "DIRECCIÓN" || k === "DOMICILIO" || k === "UBICACION" || k === "UBICACIÓN" || k === "DESTINO" ||
-          k.includes("DIRECCI") || k.includes("DOMICILIO") || k.includes("UBICACI") || k.includes("DESTINO")
+          k === "DIRECCION" || k === "DIRECCIÓN" || k === "DESTINO" || k === "UBICACION" || k === "DOMICILIO" ||
+          k.includes("DIRECCI") || k.includes("DESTINO") || k.includes("UBICACI") || k.includes("DOMICILIO") || k.includes("DIRECC")
         )
         const cCond = keys.find(k => 
-          k === "CONDUCTOR" || k === "CHOFER" || k === "CHOFER/CONDUCTOR" || k === "TRANSPORTE" || k === "DRIVER" ||
-          k.includes("CONDUCTOR") || k.includes("CHOFER") || k.includes("DRIVER") || k.includes("TRANS")
+          k === "CONDUCTOR" || k === "CHOFER" || k === "DRIVER" || k === "TRANSPORTE" ||
+          k.includes("CONDUCTOR") || k.includes("CHOFER") || k.includes("DRIVER") || k.includes("TRANS") || k.includes("PATENTE")
         )
 
-        // Fallback: si no detecta, usar una lógica de posicion si las columnas críticas faltan
-        let detectTit = cTit;
-        let detectDir = cDir;
-        if (!detectTit) {
-          detectTit = keys[0]; // Asumimos la primera columna como fallback (ej. ORDEN)
-        }
-        if (!detectDir) {
-          // Buscamos algo que parezca una dirección en las primeras 5 columnas
-          detectDir = keys.find((_, idx) => idx > 0 && idx < 5) || keys[1];
-        }
-
-        if (!detectTit || !detectDir) return flash(`⚠️ Columnas no detectadas. Cols: ${keys.join(', ')}`)
-
-        // --- Lógica de Filtrado de Chóferes Leslie ---
-        const hasLeslieKeyword = (val: string) => {
-          const u = String(val || "").toUpperCase();
-          return u.includes("FRANCISCO") || u.includes("LESLIE") || u.includes("PROYECTO") || u.includes("COMODIN");
-        };
-
-        const hasAdicional = normRows.some(r => {
-          const cond = String(r[cCond || ''] || "");
-          return cond.includes("ADICIONAL") || cond.includes("COMODIN") || cond.includes("EXTERNO");
-        });
-
-        let formatted: any[] = []
+        // Asignación de columnas críticas con fallback de posición
+        const detectTit = cTit || keys[0]
+        const detectDir = cDir || keys[1]
         
-        // Filtramos solo las filas que corresponden a Leslie (driver name filter)
-        const leslieRows = normRows.filter(r => {
-          const cond = String(r[cCond || ''] || "");
-          const iso = String(r[detectTit || ''] || "").trim().toUpperCase();
-          if (iso === 'INICIO' || iso === 'FIN' || !iso || iso === 'ISO') return false;
-          return hasLeslieKeyword(cond);
-        });
-
-        if (leslieRows.length === 0) {
-           return flash('⚠️ No se detectaron conductores de Leslie en el archivo (Francisco, Leslie, Proyecto).');
+        if (!detectTit || !detectDir) {
+           return flash(`⚠️ Faltan columnas críticas en Proyectos. Detectado: ${detectTit}/${detectDir}`)
         }
 
-        formatted = leslieRows.map(r => {
-          const cond = String(r[cCond || ''] || "").toUpperCase();
-          const isExtra = cond.includes("ADICIONAL") || cond.includes("COMODIN") || cond.includes("EXTERNO") || cond.includes("PROYECTOC");
-          const veh = isExtra ? "VEH98 Adicional" : "VEH98";
-          
-          return {
-            _tipo: hasAdicional ? 'dos' : 'uno',
-            'VEHÍCULO': veh,
-            ISO: String(r[detectTit || ''] || "").trim(),
-            DIRECCIÓN: String(r[detectDir || ''] || "").trim()
-          }
-        });
+        // Lógica de Conductor (opcional para VEH98 Adicional)
+        const getVehName = (r: any) => {
+           if (!cCond) return "VEH98"
+           const condValue = String(r[cCond] || "").toUpperCase()
+           if (condValue.includes("ADICIONAL") || condValue.includes("EXTERNO") || condValue.includes("COMODIN") || condValue.includes("PROYECTOC")) {
+             return "VEH98 Adicional"
+           }
+           return "VEH98"
+        }
+
+        const formatted = normRows.filter(r => {
+          const iso = String(r[detectTit] || "").trim()
+          // Evitar cargar cabeceras accidentales o filas vacías
+          return iso && iso !== "TITULO" && iso !== "ISO" && iso !== "INICIO" && iso !== "FIN" && iso !== "ORDEN"
+        }).map(r => ({
+          _tipo: 'dos', // Forzamos tipo 'dos' para mostrar siempre la columna vehículo (VEH98)
+          'VEHÍCULO': getVehName(r),
+          ISO: String(r[detectTit] || "").trim(),
+          DIRECCIÓN: String(r[detectDir] || "").trim()
+        }))
         
         setProyectosData(formatted)
         setProjectsName(file.name)
-        flash(`✓ ${formatted.length} proyectos Leslie cargados (Detec: ${detectTit}/${detectDir})`)
+        flash(`✓ ${formatted.length} proyectos cargados (Columnas: ${detectTit}/${detectDir})`)
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer proyectos') }
