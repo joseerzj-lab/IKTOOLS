@@ -1,4 +1,4 @@
-export type Row = Record<string, string>
+export type Row = Record<string, string> & { _ikid: string }
 export type TabKey = 'load' | 'dashboard' | 'export' | 'templates' | 'duplicates' | 'projects'
 
 export interface Stats {

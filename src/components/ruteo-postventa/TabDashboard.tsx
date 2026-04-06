@@ -15,9 +15,9 @@ interface Props {
   visibleCols: Set<string>
   setVisibleCols: React.Dispatch<React.SetStateAction<Set<string>>>
   stats: Stats
-  onUpdateCell: (rowIdx: number, col: string, value: string) => void
+  onUpdateCell: (id: string, col: string, value: string) => void
   onAddRow: () => void
-  onDeleteRow: (idx: number) => void
+  onDeleteRow: (id: string) => void
   onCrearNueva: () => void
   onUpdateRows: (rows: Row[]) => void
   onNotify: (msg: string) => void
@@ -53,7 +53,6 @@ export default function TabDashboard({
 
   // -- Stable Filtered Rows (Excel Behavior)
   const [displayRows, setDisplayRows] = useState<Row[]>([])
-  const [isStale, setIsStale] = useState(false)
 
   const getFilteredAndSorted = useCallback((sourceRows: Row[]) => {
     let result = [...sourceRows]
@@ -80,42 +79,33 @@ export default function TabDashboard({
     return result
   }, [search, colFilters, sortCol, columns])
 
+  const refreshFilters = useCallback(() => {
+    setDisplayRows(getFilteredAndSorted(rows))
+    onNotify('✓ Filtros aplicados')
+  }, [getFilteredAndSorted, rows, onNotify])
+
   // Sync displayRows when filters/sort change OR when row count changes
   useEffect(() => {
     setDisplayRows(getFilteredAndSorted(rows))
-    setIsStale(false)
-  }, [getFilteredAndSorted, rows.length])
+  }, [getFilteredAndSorted, rows.length, colFilters])
 
   // If rows change (cell edit), we update the values in displayRows but don't re-filter
+  // Content sync - only patches values in displayRows, NO re-filtering/sorting until length change
   useEffect(() => {
     setDisplayRows(prev => {
-      return prev.map(pr => {
-        const matchingRow = rows.find(r => r === pr) // This works if we keep object refs
-        if (matchingRow) return matchingRow
-        // Fallback: finding by ISO if refs broke
-        const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
-        const found = rows.find(r => r[isoCol] === pr[isoCol])
-        return found || pr
+      let changed = false
+      const next = prev.map(pr => {
+        const matching = rows.find(r => r._ikid === pr._ikid)
+        if (matching) {
+          if (matching !== pr) changed = true
+          return matching
+        }
+        return pr
       })
+      return changed ? next : prev
     })
-    
-    // Check if it should be stale
-    const fresh = getFilteredAndSorted(rows)
-    if (fresh.length !== displayRows.length) {
-      setIsStale(true)
-    } else {
-      // Check if order or content changed enough to be considered "different" from filter perspective
-      // But we don't want to be TOO aggressive. 
-      // If the user edited a filtered field, it's stale.
-      setIsStale(true) // For now, any change makes it "potentially stale" but visually stable
-    }
   }, [rows])
 
-  const refreshFilters = () => {
-    setDisplayRows(getFilteredAndSorted(rows))
-    setIsStale(false)
-    onNotify('✓ Tabla actualizada')
-  }
 
   // -- Gestiones logic
   const [showK8Modal, setShowK8Modal] = useState<Row[] | null>(null)
@@ -363,42 +353,25 @@ export default function TabDashboard({
     }
   }
 
-  const highlightText = (text: string, highlight: string) => {
-    if (!highlight.trim()) return text
-    const parts = String(text).split(new RegExp(`(${highlight.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')})`, 'gi'))
-    return (
-      <>
-        {parts.map((part, i) => 
-          part.toLowerCase() === highlight.toLowerCase() 
-            ? <mark key={i} className="bg-yellow-400/40 text-inherit rounded-sm px-0.5">{part}</mark> 
-            : part
-        )}
-      </>
-    )
-  }
 
-  const handleDuplicateRow = (filteredIdx: number) => {
-    const currentRows = getFilteredAndSorted(rows)
-    const row = currentRows[filteredIdx]
+  const handleDuplicateRow = (idx: number) => {
+    const row = filtered[idx]
     if (!row) return
-    const originalIdx = rows.indexOf(row)
+    const originalIdx = rows.findIndex(r => r._ikid === row._ikid)
     if (originalIdx < 0) return
     const newRows = [...rows]
-    newRows.splice(originalIdx + 1, 0, { ...row })
+    newRows.splice(originalIdx + 1, 0, { ...row, _ikid: Math.random().toString(36).substring(2, 11) + Date.now().toString(36) })
     onUpdateRows(newRows)
     onNotify('✓ Fila duplicada')
   }
 
-  const handleCycleGestion = (filteredIdx: number) => {
+  const handleCycleGestion = (idx: number) => {
     const gestions = ['REPITE', 'RETIRO', 'K8', 'ENVIO Y RETIRO', 'SOLO ENVIO', 'PROYECTO']
-    const currentRows = getFilteredAndSorted(rows)
-    const row = currentRows[filteredIdx]
+    const row = filtered[idx]
     if (!row) return
-    const originalIdx = rows.indexOf(row)
-    if (originalIdx < 0) return
     const current = String(row['GESTIÓN'] || '').toUpperCase()
     const nextIdx = (gestions.indexOf(current) + 1) % gestions.length
-    onUpdateCell(originalIdx, 'GESTIÓN', gestions[nextIdx])
+    onUpdateCell(row._ikid, 'GESTIÓN', gestions[nextIdx])
   }
 
   // Reemplazado por getFilteredAndSorted con useCallback al inicio
@@ -498,27 +471,6 @@ export default function TabDashboard({
               <span className="text-[9px] uppercase tracking-wider max-w-[70px] truncate" style={{ color: TC.textDisabled }} title={k}>{k}</span>
             </div>
           ))}
-          {isStale && (
-            <button 
-              onClick={refreshFilters}
-              className="ml-2 px-2 py-1 rounded bg-orange-500/10 border border-orange-500/30 text-[10px] font-bold text-orange-400 animate-pulse hover:bg-orange-500/20 transition-colors"
-            >
-              ⚠️ Re-aplicar Filtros (Excel Style)
-            </button>
-          )}
-          {rows.some(r => String(r['GESTIÓN'] || '').trim().toUpperCase() === 'ENVIO Y RETIRO') && (
-            <button 
-              onClick={() => {
-                const isoCol = columns.find(c => c.toLowerCase() === 'iso') || 'ISO'
-                const isos = rows.filter(r => String(r['GESTIÓN'] || '').trim().toUpperCase() === 'ENVIO Y RETIRO').map(r => String(r[isoCol] || '').trim()).filter(Boolean)
-                navigator.clipboard.writeText(isos.join(', '))
-                  .then(() => onNotify(`✓ ${isos.length} ISOs de Envío y Retiro copiadas`))
-              }}
-              className="ml-2 px-2 py-1 rounded bg-blue-500/10 border border-blue-500/30 text-[10px] font-bold text-blue-400 hover:bg-blue-500/20 transition-colors flex items-center gap-1"
-            >
-              <ClipboardCopy size={11} /> Copiar Envío y Retiro
-            </button>
-          )}
         </div>
       )}
 
@@ -546,10 +498,10 @@ export default function TabDashboard({
           <div className="ml-auto flex items-center gap-2">
             <DropdownMenu
               options={[
-                { label: 'Exportar Imagen (Fondo Blanco)', onClick: exportToImage, Icon: <ImageIcon size={14} /> },
-                { label: 'Exportar Datos (CSV)', onClick: exportTableCSV, Icon: <FileSpreadsheet size={14} /> },
-                { label: 'Copiar ISOs Leslie', onClick: copiarLeslie, Icon: <ClipboardCopy size={14} /> },
-                { label: 'Copiar ISOs HD', onClick: copiarHD, Icon: <ClipboardCopy size={14} /> },
+                { label: 'Imagen', onClick: exportToImage, Icon: <ImageIcon size={14} /> },
+                { label: 'CSV', onClick: exportTableCSV, Icon: <FileSpreadsheet size={14} /> },
+                { label: 'ISOs Leslie', onClick: copiarLeslie, Icon: <ClipboardCopy size={14} /> },
+                { label: 'ISOs HD', onClick: copiarHD, Icon: <ClipboardCopy size={14} /> },
               ]}
             >
               <FileDown size={14} className="mr-2" /> Exportar
@@ -558,17 +510,17 @@ export default function TabDashboard({
               onClick={copiarLeslie}
               className="text-[10px] font-bold px-2 py-1.5 rounded transition-colors hover:bg-emerald-500/10 flex items-center gap-1"
               style={{ color: '#10b981', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)', cursor: 'pointer' }}
-              title="Copia ISOs de gestión Leslie (ENVIO Y RETIRO, RETIRO, REPITE PROYECTO, REPITE LESLIE)"
+              title="Copiar ISOs para Leslie"
             >
-              <ClipboardCopy size={12} /> Rutear Leslie
+              <ClipboardCopy size={12} /> ISOs Leslie
             </button>
             <button
               onClick={copiarHD}
               className="text-[10px] font-bold px-2 py-1.5 rounded transition-colors hover:bg-violet-500/10 flex items-center gap-1"
               style={{ color: '#8b5cf6', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.3)', cursor: 'pointer' }}
-              title="Copia ISOs de otras gestiones (HD, REPITE, SOLO ENVIO, PROYECTO, etc.)"
+              title="Copiar ISOs para HD"
             >
-              <ClipboardCopy size={12} /> Rutear HD
+              <ClipboardCopy size={12} /> ISOs HD
             </button>
             <button
               onClick={() => setShowVisPanel(p => !p)}
@@ -591,7 +543,7 @@ export default function TabDashboard({
               onClick={onExportJSON}
               className="text-[10px] font-bold px-3 py-1.5 rounded transition-all hover:scale-105 active:scale-95 flex items-center gap-1.5"
               style={{ color: '#fff', background: '#3b82f6', border: '1px solid #2563eb', cursor: 'pointer', boxShadow: '0 2px 8px rgba(59, 130, 246, 0.4)' }}
-              title="Guardar sesión actual como archivo JSON"
+              title="Guardar sesión"
             >
               <FileJson size={12} /> Guardar
             </button>
@@ -763,12 +715,12 @@ export default function TabDashboard({
                                 </label>
                             ))}
                           </div>
-                          {colFilters[c] && colFilters[c].size > 0 && (
-                            <div className="p-1.5 border-t bg-black/10 flex justify-between" style={{ borderColor: TC.borderSoft }}>
-                              <button className="text-[9px] text-gray-500 hover:text-white px-2 py-1" onClick={() => setActiveFilterCol(null)}>Cerrar</button>
-                              <button className="text-[9px] text-red-400 hover:text-red-300 px-2 py-1" onClick={() => setColFilters(p => { const n = {...p}; delete n[c]; return n })}>Borrar</button>
+                          <div className="p-2 border-t bg-blue-500/5 flex flex-col gap-2" style={{ borderColor: TC.borderSoft }}>
+                            <div className="flex justify-between px-1">
+                              <button className="text-[9px] text-gray-500 hover:text-white" onClick={() => setActiveFilterCol(null)}>Cerrar</button>
+                              <button className="text-[9px] text-red-400 hover:text-red-300 underline" onClick={() => { setColFilters(p => { const n = {...p}; delete n[c]; return n }); setTimeout(refreshFilters, 0) }}>Borrar Filtro</button>
                             </div>
-                          )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -823,50 +775,43 @@ export default function TabDashboard({
                         >
                           <div className={`absolute inset-0 pointer-events-none transition-colors duration-75 ${isSelected ? 'bg-blue-500/20 mix-blend-multiply dark:mix-blend-screen ring-1 ring-inset ring-blue-500/50' : ''}`} />
                           
-                          {(!isSelected || isMultipleSelected) && search.trim() ? (
-                            <div className="w-full px-2 py-2 truncate transition-all text-[11px] font-mono" style={{ color: TC.text }}>
-                              {highlightText(r[c] || '', search)}
-                            </div>
-                          ) : (
-                            <input
-                              id={`cell-${ri}-${ci}`}
-                              type="text"
-                              className={`w-full h-full px-2 py-0 bg-transparent outline-none transition-all placeholder-opacity-20 focus:backdrop-blur-md focus:bg-white/5 dark:focus:bg-white/5 focus:ring-1 focus:ring-inset focus:ring-blue-500 ${isMultipleSelected ? 'pointer-events-none selection:bg-transparent cursor-default text-inherit' : ''} text-[11px] font-mono`}
-                              style={{ color: TC.text, border: 'none' }}
-                              value={r[c] || ''}
-                              onChange={e => {
-                                const originalIdx = rows.indexOf(r)
-                                if (originalIdx >= 0) onUpdateCell(originalIdx, c, e.target.value)
-                              }}
-                              onFocus={() => {
-                                if (!isDragging && !isMultipleSelected) {
-                                  setSelection({ start: {r: ri, c: ci}, end: {r: ri, c: ci} })
+                          <input
+                            id={`cell-${ri}-${ci}`}
+                            type="text"
+                            className={`w-full h-full px-2 py-0 bg-transparent outline-none transition-all placeholder-opacity-20 focus:backdrop-blur-md focus:bg-white/5 dark:focus:bg-white/5 focus:ring-1 focus:ring-inset focus:ring-blue-500 ${isMultipleSelected ? 'pointer-events-none selection:bg-transparent cursor-default text-inherit' : ''} text-[11px] font-mono`}
+                            style={{ color: TC.text, border: 'none' }}
+                            value={r[c] || ''}
+                            onChange={e => {
+                              onUpdateCell(r._ikid, c, e.target.value)
+                            }}
+                            onFocus={() => {
+                              if (!isDragging && !isMultipleSelected) {
+                                setSelection({ start: {r: ri, c: ci}, end: {r: ri, c: ci} })
+                              }
+                            }}
+                            autoComplete="off"
+                            onKeyDown={e => {
+                              const focusCell = (r_idx: number, c_idx: number) => {
+                                const el = document.getElementById(`cell-${r_idx}-${c_idx}`)
+                                if (el) {
+                                    el.focus()
+                                    setSelection({ start: {r: r_idx, c: c_idx}, end: {r: r_idx, c: c_idx} })
+                                    return true
                                 }
-                              }}
-                              autoComplete="off"
-                              onKeyDown={e => {
-                                const focusCell = (r_idx: number, c_idx: number) => {
-                                  const el = document.getElementById(`cell-${r_idx}-${c_idx}`)
-                                  if (el) {
-                                      el.focus()
-                                      setSelection({ start: {r: r_idx, c: c_idx}, end: {r: r_idx, c: c_idx} })
-                                      return true
-                                  }
-                                  return false
+                                return false
+                              }
+                              if (!e.shiftKey) {
+                                if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(ri - 1, ci) }
+                                else if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); focusCell(ri + 1, ci) }
+                                else if (e.key === 'ArrowLeft') {
+                                  if (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) { e.preventDefault(); focusCell(ri, ci - 1) }
+                                } else if (e.key === 'ArrowRight') {
+                                  if (e.currentTarget.selectionStart === e.currentTarget.value.length && e.currentTarget.selectionEnd === e.currentTarget.value.length) { e.preventDefault(); focusCell(ri, ci + 1) }
                                 }
-                                if (!e.shiftKey) {
-                                  if (e.key === 'ArrowUp') { e.preventDefault(); focusCell(ri - 1, ci) }
-                                  else if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); focusCell(ri + 1, ci) }
-                                  else if (e.key === 'ArrowLeft') {
-                                    if (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) { e.preventDefault(); focusCell(ri, ci - 1) }
-                                  } else if (e.key === 'ArrowRight') {
-                                    if (e.currentTarget.selectionStart === e.currentTarget.value.length && e.currentTarget.selectionEnd === e.currentTarget.value.length) { e.preventDefault(); focusCell(ri, ci + 1) }
-                                  }
-                                }
-                              }}
-                              readOnly={isMultipleSelected}
-                            />
-                          )}
+                              }
+                            }}
+                            readOnly={isMultipleSelected}
+                          />
                         </div>
                       )
                     })}
@@ -874,7 +819,7 @@ export default function TabDashboard({
                     <div className="w-24 px-1 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity sticky right-0 bg-inherit z-10 border-l" style={{ borderColor: TC.borderSoft }}>
                       <button onClick={() => handleCycleGestion(ri)} className="p-1 hover:bg-blue-500/20 text-blue-400 rounded-md transition-colors" title="Cambiar Gestión"><ArrowDownAZ size={10} /></button>
                       <button onClick={() => handleDuplicateRow(ri)} className="p-1 hover:bg-green-500/20 text-green-400 rounded-md transition-colors" title="Duplicar Fila"><Plus size={10} /></button>
-                      <button onClick={() => { const oi = rows.indexOf(r); if (oi >= 0) onDeleteRow(oi) }} className="p-1 hover:bg-red-500/20 text-red-400 rounded-md transition-colors" title="Eliminar fila"><Trash2 size={10} /></button>
+                      <button onClick={() => onDeleteRow(r._ikid)} className="p-1 hover:bg-red-500/20 text-red-400 rounded-md transition-colors" title="Eliminar fila"><Trash2 size={10} /></button>
                     </div>
                   </div>
                 )

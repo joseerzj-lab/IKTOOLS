@@ -35,160 +35,130 @@ export default function TabLoad({
 }: Props) {
 
 
-  const [pasteRepites, setPasteRepites] = useState('')
-  const [pasteRetiros, setPasteRetiros] = useState('')
-  const [pasteK8, setPasteK8] = useState('')
-  const [pasteEyR, setPasteEyR] = useState('')
+  const [pasteUnified, setPasteUnified] = useState('')
   const [eyRAsos, setEyRAsos] = useState('')
   const [planCrossFile, setPlanCrossFile] = useState<File | null>(null)
   const [convCrossFile, setConvCrossFile] = useState<File | null>(null)
+  const [pendingIsos, setPendingIsos] = useState<string[] | null>(null)
+
+  const genId = () => Math.random().toString(36).substring(2, 11) + Date.now().toString(36)
 
   const sanH = (h: string) => h.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
 
-  const procesarRepites = () => {
-    if (!pasteRepites.trim()) return
-    const lines = pasteRepites.trim().split('\n')
-    if (lines.length < 2) return
-
-    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
-    const rawHeaders = lines[0].split(sep).map(sanH)
+  const applyTabularLogic = (v: string[], isRetiroTable: boolean, cIsoIdx: number, cVehIdx: number, cComIdx: number, cOriIdx: number, source: string): Row | null => {
+    const iso = (v[cIsoIdx] || "").trim().toUpperCase().replace("NAN", "")
+    if (!iso) return null
     
-    // Legacy header mapping
-    const cIsoIdx = rawHeaders.findIndex(h => h === "ISO")
-    const cVehIdx = rawHeaders.findIndex(h => h === "VEH" || h === "VEHICULO")
-    const cComIdx = rawHeaders.findIndex(h => h === "COMENTARIO" || h === "COMENTARIOS")
-    const cOriIdx = rawHeaders.findIndex(h => h === "ORIGEN")
-
-    if (cIsoIdx === -1) return
-
-    const data: Row[] = []
-    lines.slice(1).forEach(line => {
-      const v = line.split(sep)
-      const iso = (v[cIsoIdx] || "").trim().toUpperCase().replace("NAN", "")
-      if (!iso) return
-
-      const veh = cVehIdx !== -1 ? (v[cVehIdx] || "").trim().toUpperCase().replace("NAN", "") : ""
-      const com = cComIdx !== -1 ? (v[cComIdx] || "").trim().toUpperCase().replace("NAN", "") : ""
-      const ori = cOriIdx !== -1 ? (v[cOriIdx] || "").trim().toUpperCase().replace("NAN", "") : ""
-      
-      let g = "REPITE"
-      if (veh) {
-        const eyr = (com.includes("ENVIO") && com.includes("RETIRO")) || com.includes("ENVIO Y RETIRO")
-        
-        if (veh.includes("PROYECTO LESLIE")) g = "REPITE PROYECTO"
-        else if (veh.includes("LESLIE")) g = eyr ? "ENVIO Y RETIRO" : "REPITE LESLIE"
-        else if (eyr) g = "ENVIO Y RETIRO"
-      }
-      
-      data.push({
-        ISO: iso,
-        'GESTIÓN': g,
-        ORIGEN: ori,
-        DESTINO: '',
-        'CORREO REPITES': 'SI',
-        COMENTARIO_RAW: com,
-        VEH: veh,
-        _SOURCE: 'Repites'
-      })
-    })
-
-    if (data.length > 0) {
-      onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','CORREO REPITES','COMENTARIO_RAW','VEH'], data, 'Repites')
-    }
-    setPasteRepites('')
-  }
-
-  const procesarRetiros = () => {
-    if (!pasteRetiros.trim()) return
-    const lines = pasteRetiros.trim().split('\n')
-    if (lines.length < 1) return
+    const veh = cVehIdx !== -1 ? (v[cVehIdx] || "").trim().toUpperCase().replace("NAN", "") : ""
+    const com = cComIdx !== -1 ? (v[cComIdx] || "").trim().toUpperCase().replace("NAN", "") : ""
+    const ori = cOriIdx !== -1 ? (v[cOriIdx] || "").trim().toUpperCase().replace("NAN", "") : ""
     
-    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
-    const rawHeaders = lines[0].split(sep).map(sanH)
-    const cIsoIdx = rawHeaders.findIndex(h => h.includes("ISO") || h.includes("UNIDAD") || h.includes("ID"))
-    if (cIsoIdx === -1) return
-    
-    const seen = new Set()
-    const data: Row[] = []
-    
-    lines.slice(1).forEach(line => {
-      const v = line.split(sep)
-      const iso = (v[cIsoIdx] || '').trim().toUpperCase()
-      if (!iso || seen.has(iso)) return
-      seen.add(iso)
-      data.push({
-        ISO: iso,
-        'GESTIÓN': 'RETIRO',
-        ORIGEN: 'RETIRO',
-        DESTINO: '',
-        VEH: '',
-        'CORREO REPITES': '',
-        COMENTARIO_RAW: '',
-        _SOURCE: 'Retiros'
-      })
-    })
-    
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Retiros')
-    setPasteRetiros('')
-  }
-
-  const procesarEyRPaso1 = () => {
-    if (!pasteEyR.trim()) return
-    const lines = pasteEyR.trim().split('\n')
-    if (lines.length < 1) return
-    
-    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
-    const rawHeaders = lines[0].split(sep).map(sanH)
-    // Usamos SOLO la columna "ASO GENERADA" (normalizada) como ISO
-    const cIsoIdx = rawHeaders.findIndex(h => sanH(h) === "ASO GENERADA")
-    if (cIsoIdx === -1) {
-      alert('No se encontró la columna "ASO GENERADA" en la tabla pegada.')
-      return
+    let g = isRetiroTable ? "RETIRO" : "REPITE"
+    if (!isRetiroTable && ori === 'RETIRO') g = 'RETIRO'
+    if (veh) {
+      const eyr = (com.includes("ENVIO") && com.includes("RETIRO")) || com.includes("ENVIO Y RETIRO")
+      if (veh.includes("LESLIE") && veh.includes("PROYECTO")) g = "REPITE PROYECTO"
+      else if (veh.includes("LESLIE")) g = eyr ? "ENVIO Y RETIRO" : "REPITE LESLIE"
+      else if (eyr) g = "ENVIO Y RETIRO"
     }
     
-    const isosGeneradas: string[] = []
-    const newRows: Row[] = []
+    return {
+      _ikid: genId(),
+      ISO: iso,
+      'GESTIÓN': g,
+      ORIGEN: ori || (g === 'RETIRO' ? 'RETIRO' : ''),
+      DESTINO: '',
+      'CORREO REPITES': g.includes('REPITE') ? 'SI' : '',
+      COMENTARIO_RAW: com,
+      VEH: veh,
+      _SOURCE: source
+    } as Row
+  }
+
+  const procesarUnificado = () => {
+    const raw = pasteUnified.trim()
+    if (!raw) return
+    const lines = raw.split(/\r?\n/)
+    const sep = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',')
+    const rawHeaders = lines[0].split(sep).map(sanH)
     
-    lines.slice(1).forEach(line => {
-      const v = line.split(sep)
-      const isoVal = (v[cIsoIdx] || '').trim().toUpperCase()
-      if (isoVal) {
-        newRows.push({
-          ISO: isoVal,
+    // 1. Detección de Envío y Retiro (Columna ASO GENERADA)
+    if (rawHeaders.includes("ASO GENERADA")) {
+      const cIsoIdx = rawHeaders.indexOf("ASO GENERADA")
+      const isosGeneradas: string[] = []
+      const data: Row[] = lines.slice(1).map(line => {
+        const v = line.split(sep)
+        const iso = (v[cIsoIdx] || '').trim().toUpperCase()
+        if (iso) isosGeneradas.push(iso)
+        return {
+          _ikid: genId(),
+          ISO: iso,
           'GESTIÓN': 'ENVIO Y RETIRO',
           ORIGEN: 'PENDIENTE',
           DESTINO: '',
           VEH: '',
           'CORREO REPITES': '',
           COMENTARIO_RAW: '',
-          _SOURCE: 'EyR_Paso1'
-        })
-        isosGeneradas.push(isoVal)
+          _SOURCE: 'EyR_Unificado'
+        } as Row
+      }).filter(r => r.ISO)
+      
+      if (data.length) {
+        onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Envío y Retiro')
+        setEyRAsos(isosGeneradas.join(','))
       }
-    })
-    
-    if (newRows.length) {
-      onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], newRows, 'EyR Paso 1')
-      setEyRAsos(isosGeneradas.join(','))
-      setPasteEyR('')
+      setPasteUnified('')
+      return
     }
+
+    // 2. Detección de Repites / Retiros (Tabular con más de 1 columna)
+    if (rawHeaders.length > 1) {
+      const isRetiroTable = rawHeaders[7] === "ISO" || rawHeaders[7] === "ASO"
+      const cIsoIdx = isRetiroTable ? 7 : rawHeaders.findIndex(h => h === "ISO" || h === "ASO" || h.includes("UNIDAD") || h.includes("ID") || h.includes("TITULO"))
+      if (cIsoIdx !== -1) {
+        const cVehIdx = rawHeaders.findIndex(h => h === "VEH" || h === "VEHICULO" || h === "PATENTE" || h === "MODELO")
+        const cComIdx = rawHeaders.findIndex(h => h === "COMENTARIO" || h === "COMENTARIOS" || h === "DETAIL" || h === "OBSERVACION")
+        const cOriIdx = rawHeaders.findIndex(h => h === "ORIGEN" || h === "TRANS")
+        
+        const data: Row[] = lines.slice(1).map(line => {
+          const v = line.split(sep)
+          return applyTabularLogic(v, isRetiroTable, cIsoIdx, cVehIdx, cComIdx, cOriIdx, 'Unificado_Tabular')
+        }).filter(Boolean) as Row[]
+
+        if (data.length) {
+          onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','CORREO REPITES','COMENTARIO_RAW','VEH'], data, 'Carga')
+        }
+        setPasteUnified('')
+        return
+      }
+    }
+
+    // 3. Fallback: Choice of Management
+    const isos = raw.split(/[\n\r,;\t ]+/).map(s => s.trim().toUpperCase()).filter(Boolean)
+    if (isos.length) {
+      setPendingIsos(isos)
+      setActiveModal('selection')
+    }
+    setPasteUnified('')
   }
 
-  const procesarK8 = () => {
-    if (!pasteK8.trim()) return
-    const isos = pasteK8.split(/[\n\r,;\t ]+/).map(s => s.trim().toUpperCase()).filter(Boolean)
-    const data = isos.map(iso => ({
+
+  const finalizeRawLoad = (gestion: string) => {
+    if (!pendingIsos) return
+    const data = pendingIsos.map(iso => ({
+      _ikid: genId(),
       ISO: iso,
-      'GESTIÓN': 'K8',
-      ORIGEN: 'K8',
+      'GESTIÓN': gestion,
+      ORIGEN: gestion === 'K8' ? 'K8' : (gestion === 'RETIRO' ? 'RETIRO' : ''),
       DESTINO: '',
       VEH: '',
-      'CORREO REPITES': '',
-      COMENTARIO_RAW: 'K8',
-      _SOURCE: 'K8'
+      'CORREO REPITES': gestion.includes('REPITE') ? 'SI' : '',
+      COMENTARIO_RAW: gestion,
+      _SOURCE: 'Carga_Manual'
     } as Row))
-    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'K8')
-    setPasteK8('')
+    onMergeRows(['ISO','GESTIÓN','ORIGEN','DESTINO','VEH','CORREO REPITES','COMENTARIO_RAW'], data, 'Carga ' + gestion)
+    setPendingIsos(null)
+    setActiveModal(null)
   }
 
   const handleLoadJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -206,13 +176,12 @@ export default function TabLoad({
   const [activeModal, setActiveModal] = useState<string | null>(null)
 
   const modules = [
-    { id: 'session', icon: '💾', title: 'Sesión de Trabajo', desc: 'Guarda o restaura tu progreso desde un archivo local (.json)' },
-    { id: 'projects', icon: '🏗️', title: 'Proyectos', desc: 'Carga el documento para cruzar proyectos Leslie' },
-    { id: 'duplicates', icon: '👯', title: 'Duplicados', desc: 'Detecta ISOs duplicadas subiendo el Plan Actual' },
-    { id: 'quick', icon: '⚡', title: 'Carga Rápida', desc: 'Pegar repites, retiros o K8 directo desde Excel' },
-    { id: 'eyr', icon: '🔄', title: 'Cargar Envio y Retiro', desc: 'Genera ASOs y cruza orígenes desde archivo' },
-    { id: 'crossing', icon: '🎯', title: 'Cruce Destino', desc: 'Cruza plan y conversión de transportes' }
-  ]
+    { id: 'unified', icon: '⚡', title: 'Carga', desc: 'Sube Repites, Retiros, K8 o Envío y Retiro' },
+    { id: 'crossing', icon: '🎯', title: 'Cruce', desc: 'Cruce de Destinos y Orígenes' },
+    { id: 'session', icon: '💾', title: 'Sesión', desc: 'Guardar/Cargar progreso' },
+    { id: 'projects', icon: '🏗️', title: 'Proyectos', desc: 'Documento proyectos Leslie' },
+    { id: 'duplicates', icon: '👯', title: 'Duplicados', desc: 'Detectar ISOs duplicadas' }
+  ];
 
   const renderModalContent = () => {
     switch (activeModal) {
@@ -276,103 +245,67 @@ export default function TabLoad({
             </label>
           </div>
         )
-      case 'quick':
+      case 'selection':
         return (
           <div className="flex flex-col gap-5">
-            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">⚡</span> Carga Rápida (Pegar)</h3>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-bold" style={{ color: TC.textSub }}>📦 Repites</span>
-                <textarea
-                  className="w-full h-20 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none custom-scrollbar"
-                  style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
-                  placeholder="Pega texto de excel…"
-                  value={pasteRepites}
-                  onChange={e => setPasteRepites(e.target.value)}
-                  onPaste={() => setTimeout(() => { procesarRepites() }, 60)}
-                />
-                <Btn onClick={() => { procesarRepites(); setActiveModal(null) }} size="sm" style={{ width: '100%' }}>Cargar</Btn>
-              </div>
-              <div className="flex flex-col gap-2">
-                <span className="text-xs font-bold" style={{ color: TC.textSub }}>↩️ Retiros</span>
-                <textarea
-                  className="w-full h-20 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none custom-scrollbar"
-                  style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
-                  placeholder="Pega texto de excel…"
-                  value={pasteRetiros}
-                  onChange={e => setPasteRetiros(e.target.value)}
-                  onPaste={() => setTimeout(() => { procesarRetiros() }, 60)}
-                />
-                <Btn onClick={() => { procesarRetiros(); setActiveModal(null) }} size="sm" style={{ width: '100%' }}>Cargar</Btn>
-              </div>
+            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🤔</span> ¿Qué tipo de gestión es?</h3>
+            <p className="text-xs opacity-70 leading-relaxed" style={{ color: TC.text }}>
+              Detectamos <span className="font-bold text-blue-400">{pendingIsos?.length} ISOs</span> sin formato de tabla. Selecciona el tipo de gestión para cargarlas:
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {['RETIRO', 'REPITE', 'K8', 'ENVIO Y RETIRO', 'PROYECTO', 'SOLO ENVIO'].map(g => (
+                <button
+                  key={g}
+                  onClick={() => finalizeRawLoad(g)}
+                  className="py-3 px-4 rounded-xl border-2 font-bold text-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  style={{ background: TC.bgCardAlt, borderColor: TC.borderSoft, color: TC.text }}
+                >
+                  {g}
+                </button>
+              ))}
             </div>
-
-            <div className="h-px w-full" style={{ background: TC.borderSoft }}></div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold" style={{ color: TC.textSub }}>📌 K8 (ISOs sueltas)</span>
-              <textarea
-                className="w-full h-16 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none"
-                style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
-                placeholder="Pega ISOs separadas por saltos de línea…"
-                value={pasteK8}
-                onChange={e => setPasteK8(e.target.value)}
-                onPaste={() => setTimeout(() => { procesarK8() }, 60)}
-              />
-              <Btn onClick={() => { procesarK8(); setActiveModal(null) }} size="sm" style={{ width: '100%' }}>Procesar K8</Btn>
-            </div>
+            <button onClick={() => { setPendingIsos(null); setActiveModal(null) }} className="text-[10px] opacity-40 hover:opacity-100 transition-opacity uppercase tracking-widest font-bold mt-2">Cancelar</button>
           </div>
         )
-      case 'eyr':
+      case 'unified':
         return (
           <div className="flex flex-col gap-5">
-            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🔄</span> Cargar Envio y Retiro</h3>
-            
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold" style={{ color: TC.textSub }}>Paso 1: Pegar ISOs (Genera ASOs)</span>
-              <textarea
-                className="w-full h-20 p-2 rounded text-[10px] font-mono resize-none transition-colors border focus:outline-none"
-                style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
-                placeholder="Pega tabla con ISOs..."
-                value={pasteEyR}
-                onChange={e => setPasteEyR(e.target.value)}
-              />
-              <Btn onClick={procesarEyRPaso1} size="sm" style={{ width: '100%' }}>Generar (Paso 1)</Btn>
-              
-              {eyRAsos && (
-                <div className="mt-2 p-2 rounded bg-blue-500/10 border border-blue-500/30">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] font-bold text-blue-400">ASOs Copiables</span>
-                    <button className="text-[10px] underline text-blue-400 cursor-pointer" onClick={() => { navigator.clipboard.writeText(eyRAsos); alert('Copiadas') }}>Copiar</button>
-                  </div>
-                  <textarea readOnly value={eyRAsos} className="w-full h-12 text-[10px] font-mono bg-transparent border-none outline-none resize-none custom-scrollbar" style={{ color: TC.text }} />
+            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">⚡</span> Carga de Datos</h3>
+            <p className="text-xs opacity-70 leading-relaxed" style={{ color: TC.text }}>
+              Pega cualquier tabla de Repites, Retiros o Envío y Retiro. Si pegas solo una lista de ISOs, seleccionas la gestión después.
+            </p>
+            <textarea
+              className="w-full h-40 p-3 rounded-xl text-[11px] font-mono transition-all border focus:ring-2 focus:ring-blue-500/50 outline-none"
+              style={{ background: TC.bgCardAlt, color: TC.text, borderColor: TC.borderSoft }}
+              placeholder="Pega aquí los datos desde Excel..."
+              value={pasteUnified}
+              onChange={e => setPasteUnified(e.target.value)}
+              onPaste={() => {
+                setTimeout(() => { procesarUnificado() }, 50)
+              }}
+            />
+            <Btn onClick={() => { procesarUnificado() }} style={{ width: '100%', height: 44, borderRadius: 12 }}>
+              Procesar y Cargar
+            </Btn>
+
+            {eyRAsos && (
+              <div className="mt-2 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[10px] font-bold text-blue-400">ISOs para Cruce</span>
+                  <button className="text-[10px] underline text-blue-400 cursor-pointer" onClick={() => { navigator.clipboard.writeText(eyRAsos); alert('Copiadas') }}>Copiar</button>
                 </div>
-              )}
-            </div>
-
-            <div className="h-px w-full" style={{ background: TC.borderSoft }}></div>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold" style={{ color: TC.textSub }}>Paso 2: Cruce de Origen</span>
-              <label className="flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
-                <span className="text-2xl">📂</span>
-                <span className="text-xs font-bold">Subir Origin Cross Excel</span>
-                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
-                  if (e.target.files?.[0]) onOriginCross(e.target.files[0])
-                  e.target.value = ''
-                  setActiveModal(null)
-                }} />
-              </label>
-            </div>
+                <textarea readOnly value={eyRAsos} className="w-full h-16 text-[10px] font-mono bg-transparent border-none outline-none resize-none custom-scrollbar" style={{ color: TC.text }} />
+              </div>
+            )}
           </div>
         )
       case 'crossing':
         return (
-          <div className="flex flex-col gap-5">
-            <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🎯</span> Cruce de Destino</h3>
-            <p className="text-xs leading-relaxed" style={{ color: TC.textFaint }}>Cruza un Plan File con un archivo de Conversión para asignar los destinos finales.</p>
-            
+          <div className="flex flex-col gap-6">
+            <div>
+              <h3 className="font-bold text-lg mb-1 flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🎯</span> Cruce de Destinos</h3>
+              <p className="text-[11px] opacity-60">Cruza Plan File con Conversión para asignar destino final.</p>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <label className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors" style={{ borderColor: planCrossFile ? '#3b82f6' : TC.borderSoft, color: planCrossFile ? TC.text : TC.textFaint, background: planCrossFile ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }}>
                 <span className="text-2xl">📁</span>
@@ -380,7 +313,6 @@ export default function TabLoad({
                 <span className="text-[10px] truncate max-w-[120px] opacity-70">{planCrossFile?.name || 'Requerido'}</span>
                 <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => setPlanCrossFile(e.target.files?.[0] || null)} />
               </label>
-
               <label className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors" style={{ borderColor: convCrossFile ? '#3b82f6' : TC.borderSoft, color: convCrossFile ? TC.text : TC.textFaint, background: convCrossFile ? 'rgba(59, 130, 246, 0.1)' : 'transparent' }}>
                 <span className="text-2xl">🔄</span>
                 <span className="text-xs font-bold text-center">Conversion</span>
@@ -388,22 +320,24 @@ export default function TabLoad({
                 <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => setConvCrossFile(e.target.files?.[0] || null)} />
               </label>
             </div>
-
-            <Btn 
-              variant="primary" 
-              disabled={!planCrossFile || !convCrossFile} 
-              onClick={() => {
-                if (planCrossFile && convCrossFile) {
-                  onDestinoCross(planCrossFile, convCrossFile)
-                  setPlanCrossFile(null)
-                  setConvCrossFile(null)
-                  setActiveModal(null)
-                }
-              }} 
-              style={{ width: '100%', marginTop: 8, padding: '12px 16px' }}
-            >
-              ⚡ Ejecutar Cruce
-            </Btn>
+            <Btn variant="primary" disabled={!planCrossFile || !convCrossFile} onClick={() => { if(planCrossFile && convCrossFile) onDestinoCross(planCrossFile, convCrossFile); setActiveModal(null) }} style={{ width: '100%', height: 44, borderRadius: 12 }}>⚡ Ejecutar Cruce</Btn>
+            
+            <div className="h-px w-full my-2" style={{ background: TC.borderSoft }}></div>
+            
+            <div>
+              <h3 className="font-bold text-lg mb-1 flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🚚</span> Cruce de Orígenes</h3>
+              <p className="text-[11px] opacity-60">Sube el Origin Cross Excel para asignar origen a ISOs pendientes.</p>
+            </div>
+            <label className="flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ borderColor: TC.borderSoft, color: TC.textFaint }}>
+              <span className="text-2xl">📂</span>
+              <div className="flex flex-col">
+                <span className="text-xs font-bold">Subir Excel Cruce Origen</span>
+                <span className="text-[10px] opacity-60">Asignación automática de origen</span>
+              </div>
+              <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
+                if (e.target.files?.[0]) { onOriginCross(e.target.files[0]); setActiveModal(null) }
+              }} />
+            </label>
           </div>
         )
       default: return null
@@ -466,7 +400,7 @@ export default function TabLoad({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
             style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }}
             onClick={() => setActiveModal(null)}
           >
@@ -497,4 +431,3 @@ export default function TabLoad({
     </div>
   )
 }
-

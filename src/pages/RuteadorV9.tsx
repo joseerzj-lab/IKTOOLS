@@ -13,15 +13,22 @@ import type { Row, Stats, TabKey } from '../components/ruteo-postventa/types'
 import * as XLSX from 'xlsx'
 import { compress, decompress } from 'lz-string'
 
+const AUTHORIZED_COLS = ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'VEH', 'CORREO REPITES', 'COMENTARIO_RAW']
+
 const normalizeHeader = (h: string) => 
   h.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
 
 const mapNormalizedRows = (rows: any[]) => {
   if (!rows.length) return []
   return rows.map(row => {
-    const r: any = {}
+    const r: any = {
+      _ikid: Math.random().toString(36).substring(2, 11) + Date.now().toString(36)
+    }
     for (const k in row) {
-      r[normalizeHeader(k)] = String(row[k] || "").trim().toUpperCase()
+      const normK = normalizeHeader(k)
+      if (AUTHORIZED_COLS.includes(normK)) {
+        r[normK] = String(row[k] || "").trim().toUpperCase()
+      }
     }
     return r
   })
@@ -42,9 +49,9 @@ export default function RuteadorV9() {
   const [columns, setColumns] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('r9-cols')
-      const parsed = saved ? JSON.parse(saved) : ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'VEH', 'CORREO REPITES', 'COMENTARIO_RAW']
-      return reorderCols(parsed.filter((c: string) => c !== 'Commerce'))
-    } catch { return ['ISO', 'GESTIÓN', 'ORIGEN', 'DESTINO', 'VEH', 'CORREO REPITES', 'COMENTARIO_RAW'] }
+      const parsed = saved ? JSON.parse(saved) : AUTHORIZED_COLS
+      return reorderCols(parsed.filter((c: string) => AUTHORIZED_COLS.includes(c)))
+    } catch { return AUTHORIZED_COLS }
   })
   const [rows, setRows] = useState<Row[]>(() => {
     try {
@@ -192,9 +199,20 @@ export default function RuteadorV9() {
   }, [undo, flash])
 
   const onMergeRows = (newCols: string[], newRows: Row[], source: string) => {
-    const mergedCols = [...new Set([...columns, ...newCols])]
+    const cleanNewCols = newCols.filter(c => AUTHORIZED_COLS.includes(c))
+    const mergedCols = [...new Set([...columns, ...cleanNewCols])]
+    
+    // Final sanitization of incoming row objects to remove any "hidden" keys
+    const sanitizedRows = newRows.map(row => {
+      const clean: any = { _ikid: row._ikid || (Math.random().toString(36).substring(2, 11) + Date.now().toString(36)), _SOURCE: row._SOURCE || source }
+      AUTHORIZED_COLS.forEach(c => { clean[c] = (row[c] || '').toString().trim().toUpperCase() })
+      // Special logic for DESTINO as per user request: always empty on load
+      clean.DESTINO = ''
+      return clean as Row
+    })
+
     setColumns(reorderCols(mergedCols))
-    setRowsWithHistory(prev => [...prev, ...newRows])
+    setRowsWithHistory(prev => [...prev, ...sanitizedRows])
     
     // Ensure new columns are visible
     setVisibleCols(prev => {
@@ -207,28 +225,38 @@ export default function RuteadorV9() {
   }
 
   const onLoadJSON = (cols: string[], loadedRows: Row[]) => {
-    setColumns(reorderCols(cols))
-    setRowsWithHistory(loadedRows)
-    setVisibleCols(new Set(reorderCols(cols)))
+    const cleanCols = cols.filter(c => AUTHORIZED_COLS.includes(c))
+    const cleanRows = loadedRows.map(row => {
+        const clean: any = { _ikid: row._ikid }
+        AUTHORIZED_COLS.forEach(c => { clean[c] = row[c] || '' })
+        return clean as Row
+    })
+    setColumns(reorderCols(cleanCols))
+    setRowsWithHistory(cleanRows)
+    setVisibleCols(new Set(reorderCols(cleanCols)))
     flash('✓ Sesión cargada correctamente')
   }
 
-  const updateCell = (ri: number, col: string, val: string) => {
+  const updateCell = (id: string, col: string, val: string) => {
     setRowsWithHistory(prev => {
+      const idx = prev.findIndex(r => r._ikid === id)
+      if (idx === -1) return prev
       const next = [...prev]
-      next[ri] = { ...next[ri], [col]: val }
+      next[idx] = { ...next[idx], [col]: val }
       return next
     })
   }
 
   const addRow = () => {
-    const newRow: Row = {}
+    const newRow: Row = {
+      _ikid: Math.random().toString(36).substring(2, 11) + Date.now().toString(36)
+    }
     columns.forEach(c => newRow[c] = '')
     setRowsWithHistory(prev => [...prev, newRow])
   }
 
-  const deleteRow = (idx: number) => {
-    setRowsWithHistory(prev => prev.filter((_, i) => i !== idx))
+  const deleteRow = (id: string) => {
+    setRowsWithHistory(prev => prev.filter(r => r._ikid !== id))
   }
 
   const crearNueva = () => {
@@ -237,7 +265,9 @@ export default function RuteadorV9() {
     setVisibleCols(new Set(reorderCols(defaultCols)))
     
     // Add one empty row so the table structure is visible
-    const newRow: Row = {}
+    const newRow: Row = {
+      _ikid: Math.random().toString(36).substring(2, 11) + Date.now().toString(36)
+    }
     defaultCols.forEach(c => newRow[c] = '')
     setRowsWithHistory([newRow])
     
