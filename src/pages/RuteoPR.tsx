@@ -28,7 +28,7 @@ function exportXlsx(data:any[],name:string,skip=false){const ws=XLSX.utils.json_
 function readFile(file:File):Promise<any[]>{return new Promise((res,rej)=>{const r=new FileReader(); r.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target?.result as ArrayBuffer),{type:'array'}); res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''}))}catch(err){rej(err)}}; r.onerror=rej; r.readAsArrayBuffer(file)})}
 
 const CONFIG = {
-  trucks_order: Array.from({length:40},(_,i)=>i+1).filter(i=>i!==30).map(i=>`VEH${String(i).padStart(2,'0')}`),
+  trucks_order: Array.from({length:40},(_,i)=>i+1).filter(i=>i!==29 && i!==30).map(i=>`VEH${String(i).padStart(2,'0')}`),
   special_fixed:{} as Record<string,string>,
   extraurban_communes:["ALHUE","BUIN","CALERA DE TANGO","COLINA","CURACAVI","EL MONTE","ISLA DE MAIPO","LAMPA","LO BARNECHEA","MARIA PINTO","MELIPILLA","PADRE HURTADO","PAINE","PENAFLOR","PIRQUE","SAN JOSE DE MAIPO","SAN PEDRO","TALAGANTE","TILTIL"],
   weights:{distance_km:0.44,duration_hr:0.10,iso_count:0.20,q_comunas:0.01,volume_m3:0.25},
@@ -96,7 +96,20 @@ export default function RuteoPR() {
   }
 
   const downloadPlan = ()=>{if(!sheetPlanData.length) return; const wb=XLSX.utils.book_new(); const print=sheetPlanData.map(r=>{const c={...r}; delete c._DOFI; delete c._TITULO; return c}); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(print),"Plan"); XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(sheetPolinomioData),"Polinomio"); const ws3=XLSX.utils.json_to_sheet(sheetResumenData); if(metricsData) XLSX.utils.sheet_add_aoa(ws3,[["Vehículos","Promedio de ISO","Suma de ISO"],[metricsData.total,metricsData.prom,metricsData.sum]],{origin:"N1"}); XLSX.utils.book_append_sheet(wb,ws3,"Resumen"); XLSX.writeFile(wb,`1. Simpliroute_Plan_${getFechaE()} RUTEO.xlsx`); addLog('Plan exportado','ok')}
-  const downloadRouteTo = ()=>{if(!sheetPlanData.length) return; const list=sheetPlanData.filter(r=>{const t=String(r._TITULO).trim().toUpperCase();return t!=="INICIO"&&t!=="FIN"&&r._DOFI}).map(r=>({A:r._DOFI,B:r["VEH FINAL"]})); exportXlsx(list,`2. ROUTE TO picking ${getFechaP()} entregas ${getFechaE()}.xlsx`,true); addLog('Route To exportado','ok')}
+  const downloadRouteTo = () => {
+    if(!sheetPlanData.length) return; 
+    const list = sheetPlanData.filter(r => {
+      const t = String(r._TITULO).trim().toUpperCase();
+      return t !== "INICIO" && t !== "FIN" && r._DOFI;
+    }).map(r => ({ A: r._DOFI, B: r["VEH FINAL"] })); 
+    
+    for (let i = 0; i < list.length; i += 1000) {
+      const chunk = list.slice(i, i + 1000);
+      const suffix = i === 0 ? '' : ` ${Math.floor(i/1000) + 1}`;
+      exportXlsx(chunk, `2. ROUTE TO picking ${getFechaP()} entregas ${getFechaE()}${suffix}.xlsx`, true);
+    }
+    addLog(`Route To exportado (${Math.ceil(list.length/1000)} archivo/s)`, 'ok');
+  }
   const downloadPreola = ()=>{if(!dataF1) return addLog('Carga el archivo base','warn'); const f=dataF1.filter(r=>r['TIPO_VISITA']==='PROJECT'||r['TIPO_VISITA']==='POST_SALES'); if(!f.length) return addLog('Sin proyectos/post sales','warn'); const d=f.map(r=>({A:r['ID_REFERENCIA'],B:r['TIPO_VISITA']==='PROJECT'?'VEH98':'VEH99'})); exportXlsx(d,`3. ROUTE TO PROYECT+ POST SALES picking ${getFechaP()} entregas ${getFechaE()}.xlsx`,true); addLog('Preola exportada','ok')}
 
   const handleGenerarCorreo = () => {
