@@ -220,7 +220,7 @@ function generateLinealNames(fac: string, count: number, existing: string[]): st
 const HEADER_TABS: GlassHeaderTab[] = [
   { id: 'params', label: 'Parámetros', icon: '⚙️', badgeVariant: 'blue' },
   { id: 'results', label: 'Resultados', icon: '📊', badgeVariant: 'green' },
-  { id: 'bulk', label: 'Carga Parámetros', icon: '📋', badgeVariant: 'gray' },
+  { id: 'bulk', label: 'Carga Parámetros', icon: '📋', badgeVariant: 'purple' },
 ];
 
 // ─────────────────────────────────────────────────────────
