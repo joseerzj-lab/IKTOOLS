@@ -142,6 +142,9 @@ export default function RuteadorV9() {
   const [proyectosData, setProyectosData] = useState<any[]>([])
   const [projectsName, setProjectsName] = useState('')
   const [showShortcuts, setShowShortcuts] = useState(false)
+  const [pendingProjectsData, setPendingProjectsData] = useState<{
+    rows: any[], detectTit: string, detectDir: string, cCond: string, fileName: string, conductores: string[]
+  } | null>(null)
 
   // ── Persistence (debounced for rows) ──
   useEffect(() => { localStorage.setItem('r9-cols', JSON.stringify(columns)) }, [columns])
@@ -320,7 +323,7 @@ export default function RuteadorV9() {
         const pvRows = normRows.filter(r => {
           const veh = String(r[cVeh] || "").trim() // Case-insensitive because normRows is already uppercase
           // Regex flexiblizado para detectar Postventa
-          return /VEH01.*POST.*VENTA/.test(veh) || /VEH01.*POSTVENTA/.test(veh)
+          return veh === "VEH01 POSTVENTA" || veh.includes("VEH01 POSTVENTA") || /VEH01.*POST.*VENTA/.test(veh) || /VEH01.*POSTVENTA/.test(veh)
         })
         
         const isos = pvRows.map(r => String(r[cTit] || "").trim()).filter(iso => iso && iso !== "INICIO" && iso !== "FIN")
@@ -367,37 +370,62 @@ export default function RuteadorV9() {
         const detectTit = cTit || keys[0]
         const detectDir = cDir || keys[1]
         
-        if (!detectTit || !detectDir) {
-           return flash(`⚠️ Faltan columnas críticas en Proyectos. Detectado: ${detectTit}/${detectDir}`)
+        if (!detectTit || !detectDir || !cCond) {
+           return flash(`⚠️ Faltan columnas críticas en Proyectos (Título/Destino/Conductor).`)
         }
 
-        // Lógica de Conductor (opcional para VEH98 Adicional)
-        const getVehName = (r: any) => {
-           if (!cCond) return "VEH98"
-           const condValue = String(r[cCond] || "").toUpperCase()
-           if (condValue.includes("ADICIONAL") || condValue.includes("EXTERNO") || condValue.includes("COMODIN") || condValue.includes("PROYECTOC")) {
-             return "VEH98 Adicional"
-           }
-           return "VEH98"
-        }
-
-        const formatted = normRows.filter(r => {
+        const validRows = normRows.filter(r => {
           const iso = String(r[detectTit] || "").trim()
-          // Evitar cargar cabeceras accidentales o filas vacías
           return iso && iso !== "TITULO" && iso !== "ISO" && iso !== "INICIO" && iso !== "FIN" && iso !== "ORDEN"
-        }).map(r => ({
-          _tipo: 'dos', // Forzamos tipo 'dos' para mostrar siempre la columna vehículo (VEH98)
-          'VEHÍCULO': getVehName(r),
-          ISO: String(r[detectTit] || "").trim(),
-          DIRECCIÓN: String(r[detectDir] || "").trim()
-        }))
-        
-        setProyectosData(formatted)
-        setProjectsName(file.name)
-        flash(`✓ ${formatted.length} proyectos cargados (Columnas: ${detectTit}/${detectDir})`)
+        })
+
+        const uniqueConductores = [...new Set(validRows.map(r => String(r[cCond] || "").trim()).filter(c => c))]
+
+        if (!uniqueConductores.length) {
+            return flash('⚠️ No se encontraron conductores válidos en la columna')
+        }
+
+        setPendingProjectsData({
+            rows: validRows,
+            detectTit,
+            detectDir,
+            cCond,
+            fileName: file.name,
+            conductores: uniqueConductores
+        })
       }
       reader.readAsArrayBuffer(file)
     } catch (err) { flash('⚠️ Error al leer proyectos') }
+  }
+
+  const handleConfirmProjects = (selectedConductores: string[]) => {
+    if (!pendingProjectsData) return
+    const { rows, detectTit, detectDir, cCond, fileName } = pendingProjectsData
+
+    const formatted = rows.filter(r => {
+      const cond = String(r[cCond] || "").trim()
+      return selectedConductores.includes(cond)
+    }).map(r => {
+      const cond = String(r[cCond] || "").trim()
+      const idx = selectedConductores.indexOf(cond)
+      
+      let vehName = "VEH98"
+      if (idx === 1) vehName = "VEH98 Adicional"
+      else if (idx > 1) vehName = `VEH98 Adicional ${idx}`
+
+      return {
+        _tipo: 'dos',
+        'VEHÍCULO': vehName,
+        ISO: String(r[detectTit] || "").trim(),
+        DIRECCIÓN: String(r[detectDir] || "").trim(),
+        CONDUCTOR: cond
+      }
+    })
+
+    setProyectosData(formatted)
+    setProjectsName(fileName)
+    setPendingProjectsData(null)
+    flash(`✓ ${formatted.length} proyectos asignados a ${selectedConductores.length} conductores`)
   }
 
   const handleOriginCross = async (file: File) => {
@@ -553,6 +581,8 @@ export default function RuteadorV9() {
                 onLoadJSON={onLoadJSON} 
                 onPVPlanUpload={handlePVPlanUpload}
                 onProjectsUpload={handleProjectsUpload}
+                onConfirmProjects={handleConfirmProjects}
+                pendingProjectsData={pendingProjectsData}
                 onOriginCross={handleOriginCross}
                 onDestinoCross={handleDestinoCross}
                 pvPlanName={pvPlanName}

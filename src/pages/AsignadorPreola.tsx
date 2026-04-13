@@ -21,7 +21,7 @@ const DEFAULT_PARAMS: Record<string, any> = {
   "9631": { maxPos: 60, maxVol: 6, lineales: ["96311", "96312"] },
   "9632": { maxPos: 60, maxVol: 6, lineales: ["96321", "96322"] },
   "9633": { maxPos: 60, maxVol: 6, lineales: ["96331", "96332"] },
-  "9634": { maxPos: 40, maxVol: 6, lineales: ["VAL1", "VAL2", "VAL3", "VAL4", "VAL5"] },
+  "9634": { maxPos: 40, maxVol: 6, lineales: ["VALPO-1", "VALPO-2", "VALPO-3", "VALPO-4", "VALPO-5"] },
   "9764": { maxPos: 60, maxVol: 6, lineales: ["97641", "97642"] },
   "9765": { maxPos: 60, maxVol: 6, lineales: ["97651", "97652"] },
   "9767": { maxPos: 60, maxVol: 6, lineales: ["97671", "97672"] },
@@ -70,7 +70,7 @@ function runAssignment(rows: any[], params: any) {
       const volB = parseFloat(b.VOLUMEN_M3 ?? b.volumen_m3 ?? 0) || 0;
       
       if (fac === "9634") {
-        return volB - volA; // VAL: maximizar (objetos grandes primero)
+        return volB - volA; // VALPO: maximizar (objetos grandes primero)
       } else {
         return volA - volB; // Otros: balancear (objetos pequeños primero)
       }
@@ -90,7 +90,7 @@ function runAssignment(rows: any[], params: any) {
       let assigned = false;
 
       if (fac === "9634") {
-        // Lógica para VAL (9634): Llenado secuencial lineal
+        // Lógica para VALPO (9634): Llenado secuencial lineal
         while (currentIdx < N) {
           const lName = lineales[currentIdx];
           const st = linealStats[lName];
@@ -201,12 +201,12 @@ function defaultForFac(fac: string) {
 
 /** Genera un array de nombres de lineales detectando el prefijo del patrón existente */
 function generateLinealNames(fac: string, count: number, existing: string[]): string[] {
-  // Detectar prefijo desde los nombres existentes (ej: "VAL" de "VAL1", "VAL5")
+  // Detectar prefijo desde los nombres existentes (ej: "VALPO-" de "VALPO-1", "VALPO-5")
   let autoPrefix = fac;
   if (existing.length > 0) {
     const lastName = existing[existing.length - 1];
     const match = lastName.match(/^(.*?)(\d+)$/);
-    if (match) autoPrefix = match[1]; // ej: "VAL" de "VAL5"
+    if (match) autoPrefix = match[1]; // ej: "VALPO-" de "VALPO-5"
   }
 
   const names: string[] = [];
@@ -220,6 +220,7 @@ function generateLinealNames(fac: string, count: number, existing: string[]): st
 const HEADER_TABS: GlassHeaderTab[] = [
   { id: 'params', label: 'Parámetros', icon: '⚙️', badgeVariant: 'blue' },
   { id: 'results', label: 'Resultados', icon: '📊', badgeVariant: 'green' },
+  { id: 'bulk', label: 'Carga Parámetros', icon: '📋', badgeVariant: 'gray' },
 ];
 
 // ─────────────────────────────────────────────────────────
@@ -241,7 +242,8 @@ export default function AsignadorPreola() {
   const [results, setResults] = useState<any>(null);
   const [dragging, setDragging] = useState(false);
   const [expandedFacs, setExpandedFacs] = useState<Record<string, boolean>>({});
-  const [activeTab, setActiveTab] = useState<"params" | "results">("params");
+  const [activeTab, setActiveTab] = useState<"params" | "results" | "bulk">("params");
+  const [bulkText, setBulkText] = useState("");
 
   useEffect(() => { localStorage.setItem("preola_params_v5", JSON.stringify(params)); }, [params]);
 
@@ -373,6 +375,38 @@ export default function AsignadorPreola() {
   const toggleFac = (fac: string) =>
     setExpandedFacs((prev) => ({ ...prev, [fac]: !prev[fac] }));
 
+  // ── Configuracion masiva de paramentros ───────────────────
+  const handleBulkApply = () => {
+    const lines = bulkText.trim().split('\n');
+    let applyCount = 0;
+    setParams((prev: any) => {
+      const nextP = { ...deepClone(prev) };
+      lines.forEach(line => {
+        const cols = line.split('\t').map(c => c.trim().replace(/^"|"$/g, ''));
+        if (cols.length >= 3) {
+          const fac = cols[0];
+          const prefix = cols[1];
+          const count = parseInt(cols[2], 10);
+
+          if (fac.toUpperCase() === 'FACILITY') return;
+          if (isNaN(count) || count < 1) return;
+
+          const current = nextP[fac] || defaultForFac(fac);
+          const newLineales = [];
+          for (let i = 0; i < count; i++) {
+            newLineales.push(`${prefix}${i + 1}`);
+          }
+          nextP[fac] = { ...current, lineales: newLineales };
+          applyCount++;
+        }
+      });
+      return nextP;
+    });
+    alert(`Se aplicaron configuraciones a ${applyCount} facilities.`);
+    setBulkText("");
+    setActiveTab("params");
+  };
+
   // ── Métricas del resumen ─────────────────────────────────
   const summaryStats = useMemo(() => {
     if (!results) return null;
@@ -392,7 +426,7 @@ export default function AsignadorPreola() {
         icon="📦"
         tabs={HEADER_TABS}
         activeTab={activeTab}
-        onTabChange={(id: string) => setActiveTab(id as "params" | "results")}
+        onTabChange={(id: string) => setActiveTab(id as "params" | "results" | "bulk")}
         badges={{
           params: detectedFacilities.length || 0,
           results: (results && results.summaryData) ? results.summaryData.filter((r: any) => r.isos > 0).length : 0
@@ -735,6 +769,35 @@ export default function AsignadorPreola() {
                     </div>
                   </Card>
                 </>
+              )}
+
+              {/* ── TAB CARGA MASIVA ── */}
+              {activeTab === "bulk" && (
+                <Card style={{ padding: '24px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: TC.text, marginBottom: '8px' }}>
+                    Carga Parámetros (Masiva)
+                  </h3>
+                  <p style={{ fontSize: '12px', color: TC.textMuted, marginBottom: '16px' }}>
+                    Pega una tabla desde Excel con 3 columnas: <strong>FACILITY</strong> | <strong>NOMBRE (Prefijo)</strong> | <strong>LINEALES (Cantidad)</strong>
+                  </p>
+                  <textarea
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    placeholder={`9634\tVALPO-\t5\n594\tPNO\t2`}
+                    style={{
+                      width: '100%', height: '200px', padding: '12px',
+                      background: TC.bgCardAlt, border: `1px solid ${TC.borderSoft}`,
+                      borderRadius: '8px', color: TC.text, fontFamily: 'monospace',
+                      fontSize: '12px', resize: 'vertical'
+                    }}
+                  />
+                  <div className="mt-4 flex justify-end gap-3">
+                    <Btn variant="ghost" onClick={() => setBulkText("")} style={{ fontSize: '12px' }}>Limpiar</Btn>
+                    <Btn variant="primary" onClick={handleBulkApply} style={{ fontSize: '12px', background: C.blue }}>
+                      Aplicar Cambios
+                    </Btn>
+                  </div>
+                </Card>
               )}
 
               {/* ── TAB RESULTADOS ── */}

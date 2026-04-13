@@ -17,6 +17,8 @@ interface Props {
   onExportJSON: () => void
   pvPlanName: string
   projectsName: string
+  onConfirmProjects: (conductores: string[]) => void
+  pendingProjectsData: { rows: any[], detectTit: string, detectDir: string, cCond: string, fileName: string, conductores: string[] } | null
   TC: any
 }
 
@@ -31,8 +33,12 @@ export default function TabLoad({
   onExportJSON,
   pvPlanName,
   projectsName,
+  onConfirmProjects,
+  pendingProjectsData,
   TC
 }: Props) {
+
+  const [selectedConductores, setSelectedConductores] = useState<string[]>([])
 
 
   const [pasteUnified, setPasteUnified] = useState('')
@@ -207,6 +213,45 @@ export default function TabLoad({
           </div>
         )
       case 'projects':
+        if (pendingProjectsData) {
+          return (
+            <div className="flex flex-col gap-4">
+              <h3 className="font-bold text-lg mb-2 flex items-center gap-2" style={{ color: TC.text }}>
+                <span className="text-xl">🏗️</span> Selecciona Conductores
+              </h3>
+              <p className="text-xs opacity-70" style={{ color: TC.textFaint }}>
+                Selecciona cuáles conductores corresponden a Proyectos. Se les asignará VEH98 en orden.
+              </p>
+              
+              <div className="flex flex-col gap-2 max-h-60 overflow-y-auto custom-scrollbar p-2 border rounded-xl" style={{ borderColor: TC.borderSoft }}>
+                {pendingProjectsData.conductores.map(c => (
+                  <label key={c} className="flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors hover:bg-black/5 dark:hover:bg-white/5" style={{ color: TC.text }}>
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-gray-300"
+                      checked={selectedConductores.includes(c)}
+                      onChange={e => {
+                        if (e.target.checked) setSelectedConductores(p => [...p, c])
+                        else setSelectedConductores(p => p.filter(x => x !== c))
+                      }}
+                    />
+                    <span className="text-sm">{c}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3 mt-4">
+                <Btn onClick={() => {
+                  onConfirmProjects(selectedConductores)
+                  setSelectedConductores([])
+                  setActiveModal(null)
+                }} disabled={selectedConductores.length === 0} style={{ flex: 1, height: 44 }}>
+                  Confirmar Selección ({selectedConductores.length})
+                </Btn>
+              </div>
+            </div>
+          )
+        }
         return (
           <div className="flex flex-col gap-4">
             <h3 className="font-bold text-lg mb-2 flex items-center gap-2" style={{ color: TC.text }}><span className="text-xl">🏗️</span> Proyectos Leslie</h3>
@@ -219,7 +264,7 @@ export default function TabLoad({
               <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => {
                 if (e.target.files?.[0]) onProjectsUpload(e.target.files[0])
                 e.target.value = ''
-                setActiveModal(null)
+                // We do NOT call setActiveModal(null) here because we want to wait for pendingProjectsData to show checkboxes.
               }} />
             </label>
           </div>
