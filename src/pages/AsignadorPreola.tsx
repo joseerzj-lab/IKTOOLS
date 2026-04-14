@@ -775,10 +775,10 @@ export default function AsignadorPreola() {
               {activeTab === "bulk" && (
                 <Card style={{ padding: '24px' }}>
                   <h3 style={{ fontSize: '16px', fontWeight: 'bold', color: TC.text, marginBottom: '8px' }}>
-                    Carga Parámetros (Masiva)
+                    Carga Parámetros
                   </h3>
                   <p style={{ fontSize: '12px', color: TC.textMuted, marginBottom: '16px' }}>
-                    Pega una tabla desde Excel con 3 columnas: <strong>FACILITY</strong> | <strong>NOMBRE (Prefijo)</strong> | <strong>LINEALES (Cantidad)</strong>
+                    Pega una tabla desde Excel con 3 columnas: <strong>FACILITY</strong> | <strong>GLOSA</strong> | <strong>LINEALES Cantidad</strong>
                   </p>
                   <textarea
                     value={bulkText}
